@@ -1,0 +1,40 @@
+{
+  "name": "@easyagent/playwright-ext",
+  "version": "0.1.0",
+  "description": "Playwright browser extension for easyagent: CDP browser-automation tools (navigate/snapshot/click/type/screenshot) served in-process over the easybus protocol.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "manifest.yaml"
+  ],
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly && node scripts/bundle.mjs",
+    "check": "biome check .",
+    "check:fix": "biome check --fix .",
+    "check:types": "tsc --noEmit",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@easybus/sdk": "github:easydev-org/easybus-sdk-typescript#main",
+    "playwright-core": "^1.63.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11"
+  }
+}
