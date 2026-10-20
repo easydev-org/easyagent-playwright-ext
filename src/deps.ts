@@ -4,7 +4,7 @@ import {
   ingestFileViaAgent,
   sessionVarKey,
   VARS_BUCKET,
-} from '@easybus/sdk'
+} from '@easydev-org/easybus-sdk'
 
 /**
  * The runtime surface the playwright extension relies on. The agent supplies

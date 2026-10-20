@@ -1,5 +1,5 @@
-import type { Config, ToolSpec } from '@easybus/sdk'
-import { buildConfig, parseManifest } from '@easybus/sdk'
+import type { Config, ToolSpec } from '@easydev-org/easybus-sdk'
+import { buildConfig, parseManifest } from '@easydev-org/easybus-sdk'
 import manifestYaml from '../manifest.yaml'
 import { CdpBrowserFactory } from './browser.js'
 import {
@@ -83,7 +83,7 @@ export interface PlaywrightExtensionBundle {
  * are reaped when idle or when the session is deleted.
  */
 export function createPlaywrightExtension(
-  bus: import('@easybus/sdk').Bus,
+  bus: import('@easydev-org/easybus-sdk').Bus,
   opts: PlaywrightExtensionOpts,
 ): PlaywrightExtensionBundle {
   const deps = opts.deps ?? agentFileDeps(bus)

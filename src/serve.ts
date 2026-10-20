@@ -1,4 +1,4 @@
-import { type Bus, connect, Extension } from '@easybus/sdk'
+import { type Bus, connect, Extension } from '@easydev-org/easybus-sdk'
 import {
   createPlaywrightExtension,
   type PlaywrightExtensionOpts,

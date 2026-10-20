@@ -1,4 +1,4 @@
-import { BASE_LOCALE, type Catalog, defineI18n } from '@easybus/sdk'
+import { BASE_LOCALE, type Catalog, defineI18n } from '@easydev-org/easybus-sdk'
 import type { PlaywrightDeps } from './deps.js'
 
 /**

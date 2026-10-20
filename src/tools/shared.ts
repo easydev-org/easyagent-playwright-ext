@@ -1,6 +1,6 @@
 // Shared tool-layer primitives. Argument-coercion comes from the easybus SDK's
 // extension-kit; the locator/snapshot/log helpers are the extension's own.
-import { argBool, argFloat, argStrArray, argString } from '@easybus/sdk'
+import { argBool, argFloat, argStrArray, argString } from '@easydev-org/easybus-sdk'
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
 import type { BrowserSession, ContextManager } from '../context-manager.js'
 import type { PlaywrightDeps } from '../deps.js'
