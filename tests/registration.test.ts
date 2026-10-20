@@ -1,4 +1,4 @@
-import { connect, valueToJson } from '@easybus/sdk'
+import { connect, valueToJson } from '@easydev-org/easybus-sdk'
 import { afterAll, describe, expect, it } from 'vitest'
 import { servePlaywright } from '../src/serve.js'
 import { pwTools } from '../src/tools/browser.js'

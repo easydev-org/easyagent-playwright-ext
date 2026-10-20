@@ -1,9 +1,11 @@
 import { build } from 'esbuild'
 
-// Bundle the extension + its TS-source dependency (`@easybus/sdk` is a git
-// dependency that ships raw `.ts`) into a single ESM file so the runtime image
-// needs no transpiler. `playwright-core` is precompiled JS and stays external
-// (it is a real, resolvable package), as do Node builtins.
+// Bundle the extension + the SDK. The SDK now ships COMPILED JS from the public
+// npm registry (`@easydev-org/easybus-sdk`), so there is no TS source to bundle
+// from node_modules — esbuild just inlines the runtime the extension imports
+// into a single ESM file so the runtime image needs no transpiler.
+// `playwright-core` is precompiled JS and stays external (it is a real,
+// resolvable package), as do Node builtins.
 await build({
   entryPoints: ['src/main.ts'],
   bundle: true,

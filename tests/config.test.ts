@@ -1,4 +1,4 @@
-import type { Bus } from '@easybus/sdk'
+import type { Bus } from '@easydev-org/easybus-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CONFIG_SELENIUM_URL, createPlaywrightExtension } from '../src/index.js'
 

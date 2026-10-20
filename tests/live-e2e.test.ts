@@ -1,7 +1,7 @@
 // End-to-end against a real headless Chromium (raw CDP) + a real nats-server:
 // create -> navigate -> snapshot -> screenshot -> close. Skipped when either
 // the browser or the broker is unavailable (CI without a browser skips it).
-import { type Bus, Agent, connect, newID } from '@easybus/sdk'
+import { type Bus, Agent, connect, newID } from '@easydev-org/easybus-sdk'
 import { afterAll, describe, expect, it } from 'vitest'
 import { servePlaywright } from '../src/serve.js'
 import { startChrome, startNats } from './helpers.js'
