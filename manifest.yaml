@@ -79,6 +79,7 @@ tools:
               要导航到的 URL。
       required: [context_id, url]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-navigate-back
     description: >-
@@ -99,6 +100,7 @@ tools:
               由 browser-create-context 返回的浏览器上下文键。必填：浏览器会话为显式创建并在多次调用间复用。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-snapshot
     description: >-
@@ -142,6 +144,7 @@ tools:
               包含每个元素的边界框，格式为 [box=x,y,width,height]。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-find
     description: >-
@@ -177,6 +180,7 @@ tools:
               要搜索的正则表达式。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-wait-for
     description: >-
@@ -218,6 +222,7 @@ tools:
               要等待消失的文本。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-resize
     description: >-
@@ -252,6 +257,7 @@ tools:
               视口高度。
       required: [context_id, width, height]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-tabs
     description: >-
@@ -289,6 +295,7 @@ tools:
               新标签页的 URL。
       required: [context_id, action]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-click
     description: >-
@@ -347,6 +354,7 @@ tools:
             type: string
       required: [context_id, target]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-type
     description: >-
@@ -403,6 +411,7 @@ tools:
               逐字符输入。
       required: [context_id, target, text]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-hover
     description: >-
@@ -438,6 +447,7 @@ tools:
               页面快照中的精确目标元素引用（如 "e12"），或 Playwright 选择器。
       required: [context_id, target]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-select-option
     description: >-
@@ -482,6 +492,7 @@ tools:
             type: string
       required: [context_id, target, values]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-press-key
     description: >-
@@ -509,6 +520,7 @@ tools:
               按键名或字符。
       required: [context_id, key]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-drag
     description: >-
@@ -549,6 +561,7 @@ tools:
               页面快照中的精确目标元素引用（如 "e12"），或 Playwright 选择器。
       required: [context_id, startTarget, endTarget]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-fill-form
     description: >-
@@ -589,6 +602,7 @@ tools:
             required: [name, target, type, value]
       required: [context_id, fields]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-handle-dialog
     description: >-
@@ -624,6 +638,7 @@ tools:
               提示文本。
       required: [context_id, accept]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-evaluate
     description: >-
@@ -666,6 +681,7 @@ tools:
               () => { /* 代码 */ } 或 (element) => { /* 代码 */ }
       required: [context_id, function]
     required_config: [selenium-url]
+    requires: [browser.script]
 
   - name: browser-run-code-unsafe
     description: >-
@@ -697,6 +713,7 @@ tools:
               接收 `page` 作为唯一参数的 JavaScript 函数。
       required: [context_id, code]
     required_config: [selenium-url]
+    requires: [browser.script]
 
   - name: browser-console-messages
     description: >-
@@ -732,6 +749,7 @@ tools:
               返回自上下文创建以来的所有消息。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-network-requests
     description: >-
@@ -766,6 +784,7 @@ tools:
               仅匹配该正则的 URL。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-network-request
     description: >-
@@ -797,6 +816,7 @@ tools:
           enum: [request-headers, response-headers]
       required: [context_id, index]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-take-screenshot
     description: >-
@@ -849,6 +869,7 @@ tools:
               捕获整个可滚动页面。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-pdf-save
     description: >-
@@ -891,6 +912,7 @@ tools:
               打印背景图形（默认 false）。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.read]
 
   - name: browser-file-upload
     description: >-
@@ -921,6 +943,7 @@ tools:
             type: string
       required: [context_id, codes]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-drop
     description: >-
@@ -973,6 +996,7 @@ tools:
             type: string
       required: [context_id, target]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-storage-state
     description: >-
@@ -994,6 +1018,7 @@ tools:
               由 browser-create-context 返回的浏览器上下文键。必填：浏览器会话为显式创建并在多次调用间复用。
       required: [context_id]
     required_config: [selenium-url]
+    requires: [browser.drive]
 
   - name: browser-set-storage-state
     description: >-
@@ -1023,6 +1048,69 @@ tools:
               存储状态 JSON 的文件 code（file: 之后的部分）。
       required: [context_id, code]
     required_config: [selenium-url]
+    requires: [browser.script]
+
+# ── permissions ─────────────────────────────────────────────────────────────
+#
+# What a caller must hold to drive a browser context.
+#
+# A permission is a (key, params) pair, and here the param is the CONTEXT id — the third different
+# shape of this mechanism (gitea guards a repository, sandbox-ext a sandbox, this a browser
+# context). A session may hold several contexts at once, and one trusted to click in its own
+# scratch context should not be trusted to drive one it did not create.
+#
+# The three keys are ORDERED: script implies drive implies read. Granting the broader one covers
+# the narrower, which is why a session doing real work needs just `browser.script`.
+#
+# Reads are gated here, unlike the other two extensions. A browser context is not the session's
+# own data — it can hold a logged-in session — and "look at what is on the page" is exactly what
+# someone holding a stolen context id would do first.
+permissions:
+  - key: browser.read
+    label: Observe a browser context
+    descriptions:
+      zh: 观察浏览器上下文
+    risk: write
+    params:
+      - name: context
+        type: string
+        required: true
+        description: >-
+          Browser context id, or * to allow any context this session creates.
+        descriptions:
+          zh: 浏览器上下文 id，或用 * 允许任意上下文。
+
+  - key: browser.drive
+    label: Interact with a browser context (click, type, upload)
+    descriptions:
+      zh: 操作浏览器上下文（点击、输入、上传）
+    # write, not destructive: it changes the page but does not run arbitrary code. Ordered
+    # above browser.read, which it implies.
+    risk: write
+    params:
+      - name: context
+        type: string
+        required: true
+        description: >-
+          Browser context id, or * to allow any context this session creates.
+        descriptions:
+          zh: 浏览器上下文 id，或用 * 允许任意上下文。
+
+  - key: browser.script
+    label: Run arbitrary code in a browser context
+    descriptions:
+      zh: 在浏览器上下文中执行任意代码
+    # destructive: code running in the page can read the DOM, the network, storage, and anything
+    # the site's own scripts reach — which is strictly more than browser.drive or browser.read.
+    risk: destructive
+    params:
+      - name: context
+        type: string
+        required: true
+        description: >-
+          Browser context id, or * to allow any context this session creates.
+        descriptions:
+          zh: 浏览器上下文 id，或用 * 允许任意上下文。
 
 config:
   - name: selenium-url

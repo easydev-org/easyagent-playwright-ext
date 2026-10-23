@@ -10,6 +10,7 @@ import {
 import type { PlaywrightDeps } from './deps.js'
 import { agentFileDeps } from './deps.js'
 import { localeOf, tr } from './i18n.js'
+import { requireForTool } from './permissions.js'
 import { SeleniumBrowserFactory } from './selenium.js'
 import {
   type ContextLogs,
@@ -204,13 +205,19 @@ export function createPlaywrightExtension(
       continue
     }
     handlers[name] = {
-      execute: async (_ctx, args, _callId, sessionName, tenant) => {
+      execute: async (ctx, args, _callId, sessionName, tenant) => {
         const t = tenant ?? ''
         const locale = await localeOf(deps, t, sessionName ?? '')
         const contextId = String(args['context_id'] ?? '')
         if (contextId === '') {
           throw new Error(tr(locale, 'contextIdRequired'))
         }
+        // Permission gate, before the context is touched.
+        //
+        // Keyed on the tool's RISK, not its name: the tables below say what each tool does to the
+        // page, and a tool added without an entry falls through to `drive` — the safe default is
+        // to require more, not less, when someone forgets.
+        requireForTool(ctx, name, contextId)
         const result = await manager.withContext(
           contextId,
           t,
