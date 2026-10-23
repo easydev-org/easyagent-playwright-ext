@@ -14,6 +14,9 @@ WORKDIR /build
 # The lockfile is regenerated when the SDK moves, so it is copied via a wildcard:
 # COPY of a missing file would fail the build.
 COPY package.json package-lock.json* .npmrc tsconfig.json ./
+# The SDK is a vendored tarball (it is not published to a registry), so the build needs it
+# before `npm install` — the dependency is a file: path, not a version range.
+COPY vendor vendor
 COPY scripts scripts
 COPY manifest.yaml manifest.yaml
 COPY src src
