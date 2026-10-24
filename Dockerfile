@@ -14,13 +14,23 @@ WORKDIR /build
 # The lockfile is regenerated when the SDK moves, so it is copied via a wildcard:
 # COPY of a missing file would fail the build.
 COPY package.json package-lock.json* .npmrc tsconfig.json ./
-# The SDK is a vendored tarball (it is not published to a registry), so the build needs it
-# before `npm install` — the dependency is a file: path, not a version range.
-COPY vendor vendor
 COPY scripts scripts
 COPY manifest.yaml manifest.yaml
 COPY src src
-RUN npm install --no-audit && npm run build
+
+# The SDK is installed from GitHub Packages, which authenticates even for a read.
+#
+# The token arrives as a BUILDKIT SECRET, not a build-arg: a build-arg is recorded in the image
+# metadata (`docker history`) and in the provenance attestation, so it would be published with
+# the image. A secret is mounted for this RUN only, and `--mount=type=secret` keeps it out of the
+# layer cache as well.
+#
+# It is read from a file inside that mount and handed to npm through the environment, which is
+# what .npmrc's `_authToken=${NODE_AUTH_TOKEN}` expects — the token never appears in a committed
+# file. An earlier attempt committed a read:packages token; GitHub's secret scanning revoked it
+# and every later install failed.
+RUN --mount=type=secret,id=npm_token \
+    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm install --no-audit && npm run build
 
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates nodejs

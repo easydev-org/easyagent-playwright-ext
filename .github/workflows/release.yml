@@ -56,6 +56,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
+          # The SDK is installed from GitHub Packages, which authenticates even for a read.
+          # Passed as a BUILD SECRET rather than a build-arg: a build-arg is recorded in the
+          # image metadata (`docker history`) even when it is not used as an ENV, so the token
+          # would be published with the image. BuildKit keeps secrets out of the layers and the
+          # provenance attestation.
+          secrets: |
+            npm_token=${{ secrets.GITHUB_TOKEN }}
           # The Dockerfile carries no proxy or mirror; the build cache is what
           # makes repeat builds fast, and it lives in the registry rather than in
           # an environment-specific daemon.

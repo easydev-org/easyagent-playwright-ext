@@ -6,6 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# packages: read — the SDK is installed from GitHub Packages, and GITHUB_TOKEN cannot read it
+# without this scope. Explicit rather than inherited, because the default is read-only on
+# contents and nothing else, which surfaces as a confusing 401 from npm.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -24,6 +31,10 @@ jobs:
       - run: npm install --no-audit --no-fund
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          # The SDK comes from GitHub Packages, which authenticates even for a read. The token
+          # is supplied here rather than committed to .npmrc: an earlier attempt committed one
+          # and GitHub's secret scanning revoked it, breaking every later install.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npm test
