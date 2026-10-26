@@ -1,6 +1,6 @@
 {
   "name": "@easyagent/playwright-ext",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Playwright browser extension for easyagent: CDP browser-automation tools (navigate/snapshot/click/type/screenshot) served in-process over the easybus protocol.",
   "type": "module",
   "main": "./src/index.ts",
