@@ -48,7 +48,14 @@ services:
       # /wd/hub/status answers ""ready":true" once the node can accept a session. Checking the
       # PORT instead would pass while the browser is still starting, and the first
       # browser-create-context would fail with a timeout that names nothing.
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4444/wd/hub/status | grep -q '\"ready\":true' || exit 1"]
+      #
+      # Uses bash's /dev/tcp plus the bundled python3 rather than curl: the selenium image is not
+      # guaranteed to ship curl, and a healthcheck whose COMMAND is missing fails the whole
+      # `up --wait` with no useful message — the reason is lost among docker's pull output.
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c '(exec 3<>/dev/tcp/127.0.0.1/4444) 2>/dev/null && printf "GET /wd/hub/status HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" >&3 && cat <&3 | grep -q "\"ready\":true"'
       interval: 5s
       timeout: 5s
       retries: 40

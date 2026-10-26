@@ -65,8 +65,39 @@ jobs:
       # `--wait` waits for every healthcheck, which is what makes the next step meaningful: the
       # browser node answers "ready":true only once it can accept a session, so a fast start cannot
       # be mistaken for a working one.
+      #
+      # Started detached and then probed, NOT `up --wait`: when a healthcheck fails, `--wait`
+      # reports only "container is unhealthy" and the reason is buried in docker's pull output.
+      # Starting detached lets the next step say WHY, and it prints the healthcheck's own output.
       - name: start nats + chrome
-        run: docker compose -f .github/ci/compose.yaml up -d --wait
+        run: docker compose -f .github/ci/compose.yaml up -d
+
+      - name: wait for services
+        run: |
+          set -uo pipefail
+          fail=0
+          for name in ci-nats ci-chrome; do
+            echo "--- waiting for $name ---"
+            for i in $(seq 1 60); do
+              status="$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo missing)"
+              if [ "$status" = "healthy" ]; then echo "$name healthy after ${i}0s"; break; fi
+              if [ "$status" = "unhealthy" ]; then
+                echo "::error::$name is UNHEALTHY"
+                docker inspect -f '{{json .State.Health}}' "$name" || true
+                docker logs "$name" 2>&1 | tail -40 || true
+                fail=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo missing)" != "healthy" ]; then
+              echo "::error::$name never became healthy"
+              docker inspect -f '{{json .State.Health}}' "$name" || true
+              docker logs "$name" 2>&1 | tail -40 || true
+              fail=1
+            fi
+          done
+          exit $fail
 
       - name: e2e (real browser)
         env:
