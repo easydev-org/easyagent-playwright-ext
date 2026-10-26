@@ -13,6 +13,9 @@
  */
 import { type Bus, tenantObjectName } from '@easydev-org/easybus-sdk'
 import { chFileIngest } from '@easydev-org/easybus-sdk/protocol'
+// `env.payload` is a protobuf Value, not the plain object that was sent. Reading it directly gives
+// `undefined` for every field — the shape that produced "object undefined is empty or missing".
+import { valueToJson } from '@easydev-org/easybus-sdk/transport/nats'
 
 /** The subset of the wire shapes this responder reads and writes. */
 interface FileIngestRequest {
@@ -56,7 +59,7 @@ export async function serveFakeAgentFiles(bus: Bus, tenant: string, signal: Abor
       const env = await sub.next(signal)
       if (!env) return
       if (!env.replyTo) continue // the transport always sets it; a request without one is a bug
-      const req = env.payload as unknown as FileIngestRequest
+      const req = valueToJson(env.payload) as FileIngestRequest
       let res: FileIngestResponse
       try {
         // READ WHAT THE EXTENSION ACTUALLY WROTE. This is the assertion the test is really making:

@@ -51,6 +51,35 @@ function grants(contextId: string): Array<{ key: string; params?: Record<string,
   ]
 }
 
+/**
+ * Create a context, retrying a TIMEOUT once.
+ *
+ * The run's first browser session pays for the container's WebDriver to boot a Chrome, and on a
+ * loaded runner that can exceed the request timeout with nothing actually wrong. Treating that as a
+ * defect would make the suite flaky for a reason unrelated to the extension.
+ *
+ * Only TIMEOUTS are retried: a permission error or a real refusal must fail immediately, or the
+ * retry would hide exactly what the suite exists to catch.
+ */
+async function createContext(callId: string): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const created = await agent.callTool(
+        CTX(120_000), TENANT, SESSION, EXT_ID, 'browser-create-context', callId, {},
+      )
+      expect(created.error, `create failed: ${created.error?.message ?? ''}`).toBeUndefined()
+      const id = String(
+        (created.data as { context_id?: string } | undefined)?.context_id ?? created.content,
+      ).trim()
+      expect(id.length, 'no context_id returned').toBeGreaterThan(0)
+      return id
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (attempt >= 2 || !/timeout/i.test(msg)) throw e
+    }
+  }
+}
+
 // A page that needs no network: the CI runner has none, and a test that depends on example.com
 // reports DNS failures as extension bugs.
 const PAGE_URL =
@@ -129,12 +158,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     // browser-create-context takes NO arguments (input_schema.properties is empty): the page is
     // loaded by browser-navigate afterwards. Passing initial_url would be silently ignored, and the
     // snapshot below would then read a blank page.
-    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-1', {})
-    expect(created.error, `create failed: ${created.error?.message ?? ''}`).toBeUndefined()
-    const contextId = String(
-      (created.data as { context_id?: string } | undefined)?.context_id ?? created.content,
-    ).trim()
-    expect(contextId.length, 'no context_id returned').toBeGreaterThan(0)
+    const contextId = await createContext('c-1')
 
     try {
       const nav = await agent.callToolWithGrants(
@@ -164,11 +188,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   }, 180_000)
 
   it('produces screenshot bytes that land in the object store', async () => {
-    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-10', {})
-    expect(created.error).toBeUndefined()
-    const contextId = String(
-      (created.data as { context_id?: string } | undefined)?.context_id ?? created.content,
-    ).trim()
+    const contextId = await createContext('c-10')
 
     try {
       await agent.callToolWithGrants(
