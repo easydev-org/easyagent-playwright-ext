@@ -35,6 +35,21 @@ async function setConfig(bus: Bus, name: string, value: unknown): Promise<void> 
   await bus.kvPut(CTX(10_000), 'cfg', `t.${TENANT}.${EXT_ID}.${name}`, JSON.stringify(value), 0)
 }
 
+/**
+ * Grants for the browser tools this test drives.
+ *
+ * Every browser tool is permission-gated, so a call with none fails with "permission denied:
+ * browser.read (no grant held)" before the browser is touched. That is the extension working as
+ * designed — the test carries the authorisations an operator would issue, it does not bypass them.
+ */
+function grants(contextId: string): Array<{ key: string; params?: Record<string, unknown> }> {
+  return [
+    { key: 'browser.read', params: { context: contextId } },
+    { key: 'browser.drive', params: { context: contextId } },
+    { key: 'browser.script', params: { context: contextId } },
+  ]
+}
+
 // A page that needs no network: the CI runner has none, and a test that depends on example.com
 // reports DNS failures as extension bugs.
 const PAGE_URL =
@@ -114,10 +129,10 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     expect(contextId.length, 'no context_id returned').toBeGreaterThan(0)
 
     try {
-      const nav = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-1b', {
-        context_id: contextId,
-        url: PAGE_URL,
-      })
+      const nav = await agent.callToolWithGrants(
+        CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-1b',
+        { context_id: contextId, url: PAGE_URL }, grants(contextId),
+      )
       expect(nav.error, `navigate failed: ${nav.error?.message ?? ''}`).toBeUndefined()
 
       // The browser must have actually LOADED the page, not merely answered. Reading a value that
@@ -125,9 +140,10 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
       //
       // `browser-snapshot`, not a get-text tool: there is no browser-get-text in the manifest, and
       // guessing a name gives "no responders", which reads like a broken extension.
-      const got = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-2', {
-        context_id: contextId,
-      })
+      const got = await agent.callToolWithGrants(
+        CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-2',
+        { context_id: contextId }, grants(contextId),
+      )
       expect(got.error, `snapshot failed: ${got.error?.message ?? ''}`).toBeUndefined()
       expect(got.content).toContain('hello-e2e')
     } finally {
@@ -147,13 +163,14 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     ).trim()
 
     try {
-      await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-10b', {
-        context_id: contextId,
-        url: PAGE_URL,
-      })
-      const shot = await agent.callTool(CTX(120_000), TENANT, SESSION, EXT_ID, 'browser-take-screenshot', 'c-11', {
-        context_id: contextId,
-      })
+      await agent.callToolWithGrants(
+        CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-10b',
+        { context_id: contextId, url: PAGE_URL }, grants(contextId),
+      )
+      const shot = await agent.callToolWithGrants(
+        CTX(120_000), TENANT, SESSION, EXT_ID, 'browser-take-screenshot', 'c-11',
+        { context_id: contextId }, grants(contextId),
+      )
       expect(shot.error, `screenshot failed: ${shot.error?.message ?? ''}`).toBeUndefined()
 
       // The tool answers with a file reference. A PNG is not text: if the bytes were ever inlined
@@ -176,9 +193,10 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   it('refuses a tool that needs a context that does not exist', async () => {
     // A missing context must be a NAMED error, not a hang: an agent that waits 30s for a typo has
     // burned a turn.
-    const r = await agent.callTool(CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-20', {
-      context_id: 'ctx-does-not-exist',
-    })
+    const r = await agent.callToolWithGrants(
+      CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-20',
+      { context_id: 'ctx-does-not-exist' }, grants('ctx-does-not-exist'),
+    )
     expect(r.error, 'a bad context_id returned success').toBeDefined()
   }, 120_000)
 })
