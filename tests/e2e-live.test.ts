@@ -23,6 +23,18 @@ const TENANT = 'e2e'
 const SESSION = 's-e2e'
 const CTX = (ms: number): AbortSignal => AbortSignal.timeout(ms)
 
+/**
+ * Write one extension config value the way the agent does: a KV put in the `cfg` bucket under the
+ * extension's own namespace.
+ *
+ * `Agent.setConfig` is not usable here — it requires the agent-side config authority to be running
+ * — but the WATCH the extension uses reads exactly this key, so a direct put exercises the same
+ * path an operator's save does.
+ */
+async function setConfig(bus: Bus, name: string, value: unknown): Promise<void> {
+  await bus.kvPut(CTX(10_000), 'cfg', `t.${TENANT}.${EXT_ID}.${name}`, JSON.stringify(value), 0)
+}
+
 // A page that needs no network: the CI runner has none, and a test that depends on example.com
 // reports DNS failures as extension bugs.
 const PAGE_URL =
@@ -50,6 +62,13 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     stop = served.stop
     bus = await connect(NATS_URL)
     agent = new Agent(bus)
+
+    // Every browser tool declares `required_config: [selenium-url]`, so without this every call is
+    // refused before the browser is touched. Written the way the console writes it, and BEFORE the
+    // first tool call: the extension picks it up from its config watch.
+    await setConfig(bus, 'selenium-url', SELENIUM_URL)
+    // The watch is asynchronous; give it a moment to apply rather than racing the first call.
+    await new Promise(r => setTimeout(r, 1_500))
   }, 120_000)
 
   afterAll(async () => {
@@ -61,24 +80,33 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     const found = await agent.discover(CTX(20_000), 5_000)
     const ids = found.map(m => m.id)
     expect(ids, `discovered ${JSON.stringify(ids)}`).toContain(EXT_ID)
-  })
+  }, 30_000)
 
   it('declares the browser tools it documents', async () => {
     const found = await agent.discover(CTX(20_000), 5_000)
     const mine = found.find(m => m.id === EXT_ID)
     expect(mine).toBeDefined()
-    const names = Object.keys(mine?.tools ?? {})
+    // The manifest's `tools` is an ARRAY of specs, not a map keyed by name — Object.keys on it
+    // yields "0","1","2"… which passes a length check and says nothing about the names.
+    const names = (mine?.tools ?? []).map(t => String((t as { name?: unknown }).name ?? ''))
     // The manifest is the contract an agent renders; if these disappear, every prompt that
     // mentions them silently stops working.
-    for (const want of ['browser-create-context', 'browser-navigate', 'browser-take-screenshot']) {
+    for (const want of [
+      'browser-create-context',
+      'browser-close-context',
+      'browser-navigate',
+      'browser-snapshot',
+      'browser-take-screenshot',
+    ]) {
       expect(names, `tools: ${names.join(',')}`).toContain(want)
     }
   })
 
   it('drives a real browser: create, navigate, read text, close', async () => {
-    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-1', {
-      initial_url: PAGE_URL,
-    })
+    // browser-create-context takes NO arguments (input_schema.properties is empty): the page is
+    // loaded by browser-navigate afterwards. Passing initial_url would be silently ignored, and the
+    // snapshot below would then read a blank page.
+    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-1', {})
     expect(created.error, `create failed: ${created.error?.message ?? ''}`).toBeUndefined()
     const contextId = String(
       (created.data as { context_id?: string } | undefined)?.context_id ?? created.content,
@@ -86,13 +114,21 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     expect(contextId.length, 'no context_id returned').toBeGreaterThan(0)
 
     try {
+      const nav = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-1b', {
+        context_id: contextId,
+        url: PAGE_URL,
+      })
+      expect(nav.error, `navigate failed: ${nav.error?.message ?? ''}`).toBeUndefined()
+
       // The browser must have actually LOADED the page, not merely answered. Reading a value that
       // exists only in that document is what separates "the tool replied" from "the browser worked".
-      const got = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-get-text', 'c-2', {
+      //
+      // `browser-snapshot`, not a get-text tool: there is no browser-get-text in the manifest, and
+      // guessing a name gives "no responders", which reads like a broken extension.
+      const got = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-2', {
         context_id: contextId,
-        selector: '#h',
       })
-      expect(got.error, `get-text failed: ${got.error?.message ?? ''}`).toBeUndefined()
+      expect(got.error, `snapshot failed: ${got.error?.message ?? ''}`).toBeUndefined()
       expect(got.content).toContain('hello-e2e')
     } finally {
       await agent
@@ -104,15 +140,17 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   }, 180_000)
 
   it('produces screenshot bytes that land in the object store', async () => {
-    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-10', {
-      initial_url: PAGE_URL,
-    })
+    const created = await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-create-context', 'c-10', {})
     expect(created.error).toBeUndefined()
     const contextId = String(
       (created.data as { context_id?: string } | undefined)?.context_id ?? created.content,
     ).trim()
 
     try {
+      await agent.callTool(CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-10b', {
+        context_id: contextId,
+        url: PAGE_URL,
+      })
       const shot = await agent.callTool(CTX(120_000), TENANT, SESSION, EXT_ID, 'browser-take-screenshot', 'c-11', {
         context_id: contextId,
       })
@@ -138,9 +176,8 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   it('refuses a tool that needs a context that does not exist', async () => {
     // A missing context must be a NAMED error, not a hang: an agent that waits 30s for a typo has
     // burned a turn.
-    const r = await agent.callTool(CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-get-text', 'c-20', {
+    const r = await agent.callTool(CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-snapshot', 'c-20', {
       context_id: 'ctx-does-not-exist',
-      selector: '#h',
     })
     expect(r.error, 'a bad context_id returned success').toBeDefined()
   }, 120_000)
