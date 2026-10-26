@@ -15,6 +15,7 @@ import { connect, type Bus } from '@easydev-org/easybus-sdk'
 import { Agent } from '@easydev-org/easybus-sdk/agent'
 
 import { servePlaywright } from '../src/serve.js'
+import { serveFakeAgentFiles } from './fake-agent.js'
 
 const NATS_URL = process.env['E2E_NATS_URL'] ?? ''
 const SELENIUM_URL = process.env['E2E_SELENIUM_URL'] ?? ''
@@ -60,6 +61,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   let stop: (() => Promise<void>) | undefined
   let bus: Bus
   let agent: Agent
+  const agentAbort = new AbortController()
 
   beforeAll(async () => {
     // The extension under test: a real process-level instance, serving over the real broker.
@@ -78,6 +80,11 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     bus = await connect(NATS_URL)
     agent = new Agent(bus)
 
+    // Answer the ONE request this extension makes of the agent: `file.ingest`, which the screenshot
+    // and PDF tools need because the agent owns the blob store. It reads the object the extension
+    // wrote, so the reply is evidence rather than a canned value.
+    await serveFakeAgentFiles(bus, TENANT, agentAbort.signal)
+
     // Every browser tool declares `required_config: [selenium-url]`, so without this every call is
     // refused before the browser is touched. Written the way the console writes it, and BEFORE the
     // first tool call: the extension picks it up from its config watch.
@@ -87,6 +94,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   }, 120_000)
 
   afterAll(async () => {
+    agentAbort.abort()
     await stop?.()
     await bus?.close()
   })
