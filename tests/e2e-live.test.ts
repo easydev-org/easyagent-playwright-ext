@@ -12,10 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { connect, type Bus } from '@easydev-org/easybus-sdk'
-// Deep path, not `@easydev-org/easybus-sdk/agent`: the SDK's package.json declares `"./*":
-// "./dist/*.js"`, which resolves `…/agent` to `dist/agent.js` — a file that does not exist, because
-// the module is `dist/agent/agent.js`. The exports map is wrong; this import works around it.
-import { Agent } from '@easydev-org/easybus-sdk/dist/agent/agent.js'
+import { Agent } from '@easydev-org/easybus-sdk/agent'
 
 import { servePlaywright } from '../src/serve.js'
 
