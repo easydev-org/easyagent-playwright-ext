@@ -61,10 +61,10 @@ function grants(contextId: string): Array<{ key: string; params?: Record<string,
  * Only TIMEOUTS are retried: a permission error or a real refusal must fail immediately, or the
  * retry would hide exactly what the suite exists to catch.
  */
-async function createContext(callId: string): Promise<string> {
+async function createContext(ag: Agent, callId: string): Promise<string> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const created = await agent.callTool(
+      const created = await ag.callTool(
         CTX(120_000), TENANT, SESSION, EXT_ID, 'browser-create-context', callId, {},
       )
       expect(created.error, `create failed: ${created.error?.message ?? ''}`).toBeUndefined()
@@ -158,7 +158,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     // browser-create-context takes NO arguments (input_schema.properties is empty): the page is
     // loaded by browser-navigate afterwards. Passing initial_url would be silently ignored, and the
     // snapshot below would then read a blank page.
-    const contextId = await createContext('c-1')
+    const contextId = await createContext(agent, 'c-1')
 
     try {
       const nav = await agent.callToolWithGrants(
@@ -188,7 +188,7 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
   }, 180_000)
 
   it('produces screenshot bytes that land in the object store', async () => {
-    const contextId = await createContext('c-10')
+    const contextId = await createContext(agent, 'c-10')
 
     try {
       await agent.callToolWithGrants(
