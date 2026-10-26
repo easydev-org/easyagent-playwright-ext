@@ -38,3 +38,48 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npm test
+
+  # The extension against a REAL broker and a REAL browser.
+  #
+  # The agent is NOT part of this: a tool call is a request on
+  # `easybus.<tenant>.tool.call.<extId>.<tool>`, so the test plays the agent's part with the SDK's
+  # own client. That keeps the test about THIS extension — the agent's behaviour is its own suite.
+  #
+  # Runs after `test`, not in the Node matrix: the services do not depend on the Node version, and
+  # starting a browser three times to prove that would be waste.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm install --no-audit --no-fund
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # `--wait` waits for every healthcheck, which is what makes the next step meaningful: the
+      # browser node answers "ready":true only once it can accept a session, so a fast start cannot
+      # be mistaken for a working one.
+      - name: start nats + chrome
+        run: docker compose -f .github/ci/compose.yaml up -d --wait
+
+      - name: e2e (real browser)
+        env:
+          E2E_NATS_URL: nats://127.0.0.1:4222
+          # The extension runs on the RUNNER (the test launches it in-process), so it reaches both
+          # services on their host ports. That is why compose PUBLISHES them rather than exposing.
+          E2E_SELENIUM_URL: http://127.0.0.1:4444
+        run: npx vitest run tests/e2e-live.test.ts
+
+      - name: dump service logs on failure
+        if: failure()
+        run: docker compose -f .github/ci/compose.yaml logs --no-color
+
+      - name: down
+        if: always()
+        run: docker compose -f .github/ci/compose.yaml down -v
