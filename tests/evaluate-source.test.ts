@@ -41,10 +41,11 @@ describe('browser-evaluate', () => {
     expect(seen).toHaveLength(1)
     const src = seen[0]!
     expect(typeof src).toBe('string')
-    // The wrapper must INVOKE the caller's function: `(() => 1+1)` alone evaluates to a function
-    // that nobody calls, which is how the original bug returned nothing useful.
+    // The wrapper must INVOKE the caller's function. Playwright treats a string as an expression and
+    // returns its value WITHOUT calling it, so `(() => 1+1)` alone serialises to nothing — which is
+    // exactly the empty result the live browser test caught.
     expect(src).toContain('() => 1+1')
-    expect(src).toMatch(/\(\s*\(\) => 1\+1\s*\)\s*\(/)
+    expect(src).toMatch(/\(\s*\(\) => 1\+1\s*\)\s*\(\s*\)/)
   })
 
   it('passes the element when a target is given', async () => {
@@ -55,6 +56,7 @@ describe('browser-evaluate', () => {
       target: '#x',
     })
     expect(seen[0]).toMatch(/\(el\)\s*=>/)
+    // The element form IS called by Playwright, with the element as the argument.
     expect(seen[0]).toContain('(el)')
   })
 

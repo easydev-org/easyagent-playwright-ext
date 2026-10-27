@@ -146,15 +146,19 @@ export function interactionTools(): Record<string, Exec> {
   const evaluate: Exec = async (_ctx, session, args) => {
     const fn = requireArg(args, 'function')
     const target = strArg(args, 'target')
-    // The caller writes `() => ...` or `(el) => ...`. Normalising to a callable happens INSIDE the
-    // page: `(${fn})` alone is an expression whose value is a function that is never called.
-    const src = target !== ''
-      ? `(el) => (${fn})(el)`
-      : `(arg) => (${fn})(arg)`
+    // Playwright evaluates a STRING as an EXPRESSION and returns its value — it does NOT call it.
+    // Passing `(arg) => (${fn})(arg)` therefore returns a function object, which serialises to
+    // nothing and arrives as ''. The invocation has to be part of the expression.
+    //
+    //   page form:    (${fn})()        group the caller's body, then call it with no argument
+    //   element form: (el) => (${fn})(el)   Playwright calls this one, passing the element
+    //
+    // The grouping matters: `(${fn})` keeps a body like `(a, b) => ...` as ONE expression before
+    // the call, instead of `(a, b)` being parsed as its own comma expression.
     const value =
       target !== ''
-        ? await resolveLocator(session.page, target).evaluate(src)
-        : await session.page.evaluate(src)
+        ? await resolveLocator(session.page, target).evaluate(`(el) => (${fn})(el)`)
+        : await session.page.evaluate(`(${fn})()`)
     return { content: render(value) }
   }
 
