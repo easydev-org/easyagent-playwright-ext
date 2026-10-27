@@ -146,18 +146,21 @@ export function interactionTools(): Record<string, Exec> {
   const evaluate: Exec = async (_ctx, session, args) => {
     const fn = requireArg(args, 'function')
     const target = strArg(args, 'target')
-    // Playwright evaluates a STRING as an EXPRESSION and returns its value — it does NOT call it.
-    // Passing `(arg) => (${fn})(arg)` therefore returns a function object, which serialises to
-    // nothing and arrives as ''. The invocation has to be part of the expression.
+    // The two Playwright calls take a string with DIFFERENT semantics, and the first version
+    // treated them the same — which is why the live browser test returned '' for one and worked for
+    // the other:
     //
-    //   page form:    (${fn})()        group the caller's body, then call it with no argument
-    //   element form: (el) => (${fn})(el)   Playwright calls this one, passing the element
-    //
-    // The grouping matters: `(${fn})` keeps a body like `(a, b) => ...` as ONE expression before
-    // the call, instead of `(a, b)` being parsed as its own comma expression.
+    //   page.evaluate(src)          src is an EXPRESSION; its VALUE is returned. A function literal
+    //                               is a value, so the call has to be part of it: `(${fn})()`.
+    //   locator.evaluate(src)       src is a FUNCTION SOURCE; Playwright CALLS it with the element.
+    //                               Wrapping it in another arrow passes the wrapper's parameter,
+    //                               shadowing the caller's own name — so `(el) => ((el) => el.text)`
+    //                               runs with the WRONG binding and yields nothing.
     const value =
       target !== ''
-        ? await resolveLocator(session.page, target).evaluate(`(el) => (${fn})(el)`)
+        ? // `as never`: the overload wants a typed PageFunction, but what we have is SOURCE — which
+          // is exactly what Playwright accepts at runtime for this call.
+          await resolveLocator(session.page, target).evaluate(fn as never)
         : await session.page.evaluate(`(${fn})()`)
     return { content: render(value) }
   }

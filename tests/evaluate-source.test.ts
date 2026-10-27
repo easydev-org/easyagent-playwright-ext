@@ -55,9 +55,10 @@ describe('browser-evaluate', () => {
       function: '(el) => el.textContent',
       target: '#x',
     })
-    expect(seen[0]).toMatch(/\(el\)\s*=>/)
-    // The element form IS called by Playwright, with the element as the argument.
-    expect(seen[0]).toContain('(el)')
+    // locator.evaluate takes FUNCTION SOURCE and calls it with the element, so the caller's body is
+    // passed AS IS. Wrapping it in another arrow would shadow the caller's own parameter — which is
+    // what made the live test return ''.
+    expect(seen[0]).toBe('(el) => el.textContent')
   })
 
   // A missing argument must be an ERROR, not a hang. This is the case the report could not get a

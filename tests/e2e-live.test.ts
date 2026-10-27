@@ -259,7 +259,11 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
         grants(contextId),
       )
       expect(elem.error, `evaluate with target failed: ${elem.error?.message ?? ''}`).toBeUndefined()
-      expect(elem.content).toContain('hello-e2e')
+      // Report what actually came back when this fails: '' means the expression produced nothing,
+      // while an error string means the locator or the call was wrong. Those need opposite fixes.
+      expect(elem.content, `element evaluate returned ${JSON.stringify(elem.content)}`).toContain(
+        'hello-e2e',
+      )
     } finally {
       await agent
         .callTool(CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-close-context', 'c-24', {
