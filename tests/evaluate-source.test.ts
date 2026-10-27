@@ -21,7 +21,10 @@ function fakeSession(seen: string[]): BrowserSession {
     },
     getDefaultTimeout: () => 5000,
     locator: () => ({
-      elementHandle: () => Promise.resolve({ dispose: () => Promise.resolve() }),
+      evaluate: (f: unknown) => {
+        seen.push(typeof f === 'function' ? 'FN' : String(f))
+        return Promise.resolve(7)
+      },
     }),
   }
   return { page } as unknown as BrowserSession
@@ -52,10 +55,10 @@ describe('browser-evaluate', () => {
       function: '(el) => el.textContent',
       target: '#x',
     })
-    // The caller's body is CALLED with the element: `(el) => el.textContent` alone is a function
-    // value that nobody invokes. locator.evaluate cannot be used at all — its parameter is a real
-    // PageFunction, so source there is called as if it were one and yields undefined.
-    expect(seen[0]).toBe('(arg) => ((el) => el.textContent)(arg)')
+    // locator.evaluate requires a FUNCTION (its parameter is PageFunction, so source there is
+    // called as if it were one and yields undefined). Playwright serialises the function to the
+    // page and CALLS it with the element, so `el` is the real DOM node.
+    expect(seen[0]).toBe('FN')
   })
 
   // A missing argument must be an ERROR, not a hang. This is the case the report could not get a

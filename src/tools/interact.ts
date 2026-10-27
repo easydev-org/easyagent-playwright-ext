@@ -146,32 +146,24 @@ export function interactionTools(): Record<string, Exec> {
   const evaluate: Exec = async (_ctx, session, args) => {
     const fn = requireArg(args, 'function')
     const target = strArg(args, 'target')
-    // HOW the caller's source reaches the page, and why each form looks the way it does:
+    // The element form NEEDS a real function, not source.
     //
-    //   page.evaluate(src)        src is an EXPRESSION; its VALUE is returned. A function literal is
-    //                             a value, so the call is part of it: `(${fn})()`.
-    //   page.evaluate(src, arg)   src is a FUNCTION receiving `arg`. The parameter name is `arg`,
-    //                             NOT something chosen here — `(${fn})(el)` fails with
-    //                             "el is not defined", which is exactly what the live test reported.
-    //   locator.evaluate(fn)      NOT usable with source: its parameter is a PageFunction, so a
-    //                             string is called as if it were a function and yields undefined.
+    // `page.evaluate(src, arg)` passes `arg` to the page as a JSHandle, and a JSHandle has no
+    // `tagName`/`textContent` — the caller's body would see an opaque wrapper. Only
+    // `locator.evaluate` unwraps the element, and its parameter is a `PageFunction`, so source is
+    // wrong there too: it gets called as if it were a function and yields undefined.
     //
-    // The element is passed as an ElementHandle so the page side receives the real DOM node rather
-    // than a serialised copy — Playwright unwraps a handle argument for the page function.
+    // `new Function` is safe HERE because the returned function is serialised and runs IN THE PAGE,
+    // which is where the caller's code was always meant to run — that is the difference from the
+    // original bug, where the wrapper was invoked in this process.
     let value: unknown
     if (target === '') {
+      // `page.evaluate(src)`: src is an EXPRESSION whose value is returned, so the call is part of it.
       value = await session.page.evaluate(`(${fn})()`)
     } else {
-      const handle = await resolveLocator(session.page, target).elementHandle()
-      if (handle === null) {
-        throw new Error(`no element matches ${target}`)
-      }
-      try {
-        // `arg` is Playwright's own parameter name for the value passed as the second argument.
-        value = await session.page.evaluate(`(arg) => (${fn})(arg)`, handle)
-      } finally {
-        await handle.dispose().catch(() => undefined)
-      }
+      // `locator.evaluate(FN)`: Playwright CALLS this with the element, so `el` is the DOM node.
+      const fnObj = new Function('el', `return (${fn})(el)`) as (el: Element) => unknown
+      value = await resolveLocator(session.page, target).evaluate(fnObj)
     }
     return { content: render(value) }
   }
