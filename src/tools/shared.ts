@@ -149,3 +149,33 @@ export function parseSlashRegex(raw: string): RegExp {
   }
   return new RegExp(raw)
 }
+
+/**
+ * Reject after `ms` if `p` has not settled, naming the operation.
+ *
+ * Playwright's own timeouts cover page operations, but they do not cover a plain JavaScript loop:
+ * `browser-run-code-unsafe` runs caller-supplied code in the extension's process, and a `while
+ * (true)` there never reaches a Playwright call to be timed out. Without a race the tool call stays
+ * open forever, and the caller sees a tool that never answers rather than one that failed.
+ *
+ * The promise is NOT cancelled — JavaScript cannot do that — so this bounds the WAIT, not the work.
+ * It is enough here because the alternative is an unbounded hang, and a leaked computation is a
+ * smaller problem than a wedged tool loop.
+ */
+export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${what}: no result after ${ms}ms`))
+    }, ms)
+    p.then(
+      v => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      e => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}

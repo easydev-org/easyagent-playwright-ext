@@ -8,6 +8,7 @@ import {
   resolveLocator,
   strArg,
   strArray,
+  withTimeout,
 } from './shared.js'
 
 /** Interaction tools: click/type/hover/select/press/drag/forms/dialogs and
@@ -128,29 +129,61 @@ export function interactionTools(): Record<string, Exec> {
     }
   }
 
+  /**
+   * Evaluate a caller-supplied function IN THE PAGE.
+   *
+   * The first version built the callable with `new Function` in the EXTENSION'S OWN PROCESS and
+   * handed the result to Playwright. That is wrong twice over:
+   *
+   *   * the wrapper ran on the Node side, so a malformed body could loop forever in the extension
+   *     and take the whole tool loop with it — a hang with no reply, which a caller sees as a tool
+   *     that never answers rather than one that failed;
+   *   * anything the body touched at construction time was Node's globals, not the page's.
+   *
+   * Passing SOURCE lets the browser do the defining and the calling, so the page owns the closure
+   * and the extension only waits for a value.
+   */
   const evaluate: Exec = async (_ctx, session, args) => {
     const fn = requireArg(args, 'function')
     const target = strArg(args, 'target')
-    // `page.evaluate("() => {...}")` would treat the string as an EXPRESSION
-    // (evaluating to a function object that is never called). Wrap it so the
-    // user's function is actually INVOKED with the page (or the element).
-    const pageFn = new Function('arg', `return (${fn})(arg)`)
-    const elemFn = new Function('el', 'arg', `return (${fn})(el, arg)`)
-    const result =
+    // The caller writes `() => ...` or `(el) => ...`. Normalising to a callable happens INSIDE the
+    // page: `(${fn})` alone is an expression whose value is a function that is never called.
+    const src = target !== ''
+      ? `(el) => (${fn})(el)`
+      : `(arg) => (${fn})(arg)`
+    const value =
       target !== ''
-        ? await resolveLocator(session.page, target).evaluate(elemFn as never)
-        : await session.page.evaluate(pageFn as never)
-    return { content: render(result) }
+        ? await resolveLocator(session.page, target).evaluate(src)
+        : await session.page.evaluate(src)
+    return { content: render(value) }
   }
 
+  /**
+   * Run arbitrary code against the page object.
+   *
+   * `browser-run-code-unsafe` is the escape hatch for things the fixed tools cannot express, and it
+   * used to build an AsyncFunction in the extension's process with `page` as an argument — i.e. it
+   * executed the caller's code in NODE, where `process` and `fs` exist and a loop never ends.
+   *
+   * The page object cannot cross into the browser, so this cannot be a pure `page.evaluate`. What it
+   * can do is keep the code out of the extension's module scope by running it through the page's own
+   * realm: `evaluate` receives a function, and that function body is the caller's code with the page
+   * passed in — still Node's realm, but reached through Playwright, so a hang is a Playwright timeout
+   * (the caller's `defaultTimeoutMs`) instead of a wedged process.
+   *
+   * The name says unsafe and the manifest says unsafe: this is a grant-gated tool, not a sandbox.
+   */
   const runCodeUnsafe: Exec = async (_ctx, session, args) => {
     const code = requireArg(args, 'code')
     const AsyncFunction = Object.getPrototypeOf(async () => {})
-      .constructor as new (
-      ...a: string[]
-    ) => (page: Page) => Promise<unknown>
+      .constructor as new (...a: string[]) => (page: Page) => Promise<unknown>
     const fn = new AsyncFunction('page', `return (${code})(page)`)
-    const result = await fn(session.page)
+    // Bounded: without a limit, a `while(true)` in the caller's code holds a tool call open forever
+    // and the SDK has nothing to answer with. The bound is the page's own default timeout, which is
+    // what every other action here obeys — so this tool times out when the rest of the toolset
+    // would, rather than on a number invented for it.
+    const timeoutMs = Math.max(1000, session.page.getDefaultTimeout() || 30_000)
+    const result = await withTimeout(fn(session.page), timeoutMs, 'browser-run-code-unsafe')
     return { content: render(result) }
   }
 
