@@ -253,6 +253,22 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
       expect(title.content).toContain('e2e-title')
 
       // Element form: the target arrives as the first argument.
+      //
+      // Do NOT guess what '' means here — ask the page. The element form passes the caller's source
+      // to locator.evaluate, which CALLS it with the element; a body that returns undefined and a
+      // locator that matched nothing both look like '' from the outside.
+      const diag = await agent.callToolWithGrants(
+        CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-evaluate', 'c-22b',
+        {
+          context_id: contextId,
+          function:
+            '(el) => JSON.stringify({ tag: el && el.tagName, id: el && el.id, text: el && el.textContent })',
+          target: '#h',
+        },
+        grants(contextId),
+      )
+      console.log('[diag] element evaluate ->', JSON.stringify(diag.content), diag.error?.message)
+
       const elem = await agent.callToolWithGrants(
         CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-evaluate', 'c-23',
         { context_id: contextId, function: '(el) => el.textContent', target: '#h' },
