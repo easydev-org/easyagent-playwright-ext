@@ -173,16 +173,16 @@ export function interactionTools(): Record<string, Exec> {
    *
    * The name says unsafe and the manifest says unsafe: this is a grant-gated tool, not a sandbox.
    */
-  const runCodeUnsafe: Exec = async (_ctx, session, args) => {
+  const runCodeUnsafe: Exec = async (ctx, session, args) => {
     const code = requireArg(args, 'code')
     const AsyncFunction = Object.getPrototypeOf(async () => {})
       .constructor as new (...a: string[]) => (page: Page) => Promise<unknown>
     const fn = new AsyncFunction('page', `return (${code})(page)`)
     // Bounded: without a limit, a `while(true)` in the caller's code holds a tool call open forever
-    // and the SDK has nothing to answer with. The bound is the page's own default timeout, which is
-    // what every other action here obeys — so this tool times out when the rest of the toolset
-    // would, rather than on a number invented for it.
-    const timeoutMs = Math.max(1000, session.page.getDefaultTimeout() || 30_000)
+    // and the SDK has nothing to answer with. The bound is the extension's configured action timeout
+    // — the same number every Playwright call here already obeys — rather than a second constant
+    // that would drift from it.
+    const timeoutMs = Math.max(1000, ctx.defaultTimeoutMs || 30_000)
     const result = await withTimeout(fn(session.page), timeoutMs, 'browser-run-code-unsafe')
     return { content: render(result) }
   }

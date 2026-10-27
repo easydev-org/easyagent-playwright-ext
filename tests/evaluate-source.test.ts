@@ -30,7 +30,7 @@ function fakeSession(seen: string[]): BrowserSession {
   return { page } as unknown as BrowserSession
 }
 
-const ctx = { locale: 'en' } as never
+const ctx = { locale: 'en', defaultTimeoutMs: 5000 } as never
 
 describe('browser-evaluate', () => {
   it('sends a CALLING wrapper as source, not a constructed function', async () => {
