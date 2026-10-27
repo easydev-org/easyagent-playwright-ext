@@ -218,6 +218,79 @@ describe.skipIf(!NATS_URL || !SELENIUM_URL)('playwright extension, live', () => 
     }
   }, 180_000)
 
+  // browser-evaluate used to build the caller's function in the EXTENSION'S process and hand it to
+  // Playwright. Against a real browser that is not observably wrong for a well-formed body, so the
+  // assertions here are about the two things that DID break:
+  //
+  //   1. the value must come from the PAGE. `location.href` is only knowable inside the document, so
+  //      a wrapper that ran in Node could not produce it;
+  //   2. it must ANSWER. The reported failure was a call that never replied at all, which from a
+  //      caller's side is indistinguishable from a wedged extension.
+  it('evaluates in the page and returns the value', async () => {
+    const contextId = await createContext(agent, 'c-20')
+
+    try {
+      await agent.callToolWithGrants(
+        CTX(90_000), TENANT, SESSION, EXT_ID, 'browser-navigate', 'c-20b',
+        { context_id: contextId, url: PAGE_URL }, grants(contextId),
+      )
+
+      // Pure arithmetic: proves the function is CALLED rather than merely defined. `() => 1+1` as an
+      // uninvoked expression serialises to undefined, which is what a broken wrapper returns.
+      const arith = await agent.callToolWithGrants(
+        CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-evaluate', 'c-21',
+        { context_id: contextId, function: '() => 1+1' }, grants(contextId),
+      )
+      expect(arith.error, `evaluate failed: ${arith.error?.message ?? ''}`).toBeUndefined()
+      expect(arith.content).toContain('2')
+
+      // A value that exists only inside the document. Read from the page, not from Node.
+      const title = await agent.callToolWithGrants(
+        CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-evaluate', 'c-22',
+        { context_id: contextId, function: '() => document.title' }, grants(contextId),
+      )
+      expect(title.error, `evaluate failed: ${title.error?.message ?? ''}`).toBeUndefined()
+      expect(title.content).toContain('e2e-title')
+
+      // Element form: the target arrives as the first argument.
+      const elem = await agent.callToolWithGrants(
+        CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-evaluate', 'c-23',
+        { context_id: contextId, function: '(el) => el.textContent', target: '#h' },
+        grants(contextId),
+      )
+      expect(elem.error, `evaluate with target failed: ${elem.error?.message ?? ''}`).toBeUndefined()
+      expect(elem.content).toContain('hello-e2e')
+    } finally {
+      await agent
+        .callTool(CTX(60_000), TENANT, SESSION, EXT_ID, 'browser-close-context', 'c-24', {
+          context_id: contextId,
+        })
+        .catch(() => undefined)
+    }
+  }, 180_000)
+
+  // Every invalid call must come back as an ERROR, quickly. The reported failure was that these
+  // produced NO reply at all, so the timing is part of the assertion: a call that answers in 30s
+  // would still be a wedged tool from the caller's point of view.
+  it('answers immediately for invalid evaluate calls', async () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['missing function', { context_id: 'ctx-nope' }],
+      ['missing context_id', { function: '() => 1' }],
+      ['unknown context_id', { context_id: 'ctx-nope', function: '() => 1' }],
+    ]
+    for (const [label, args] of cases) {
+      const started = Date.now()
+      const r = await agent.callToolWithGrants(
+        CTX(20_000), TENANT, SESSION, EXT_ID, 'browser-evaluate',
+        `c-bad-${label}`, args, grants('ctx-nope'),
+      )
+      const ms = Date.now() - started
+      expect(r.error, `${label}: expected an error, got ${JSON.stringify(r.content)}`).toBeDefined()
+      // Generous (a cold JIT and a network hop are real), but far below the 8s hang that was reported.
+      expect(ms, `${label}: took ${ms}ms, which is a hang not an answer`).toBeLessThan(5_000)
+    }
+  }, 120_000)
+
   it('refuses a tool that needs a context that does not exist', async () => {
     // A missing context must be a NAMED error, not a hang: an agent that waits 30s for a typo has
     // burned a turn.
