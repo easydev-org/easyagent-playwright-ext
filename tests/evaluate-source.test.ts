@@ -15,16 +15,13 @@ import type { BrowserSession } from '../src/context-manager.js'
 /** A page double that records what evaluate was given and returns a canned value. */
 function fakeSession(seen: string[]): BrowserSession {
   const page = {
-    evaluate: (arg: unknown) => {
+    evaluate: (arg: unknown, _arg2?: unknown) => {
       seen.push(String(arg))
       return Promise.resolve(7)
     },
     getDefaultTimeout: () => 5000,
     locator: () => ({
-      evaluate: (arg: unknown) => {
-        seen.push(String(arg))
-        return Promise.resolve(7)
-      },
+      elementHandle: () => Promise.resolve({ dispose: () => Promise.resolve() }),
     }),
   }
   return { page } as unknown as BrowserSession
@@ -55,10 +52,10 @@ describe('browser-evaluate', () => {
       function: '(el) => el.textContent',
       target: '#x',
     })
-    // locator.evaluate takes FUNCTION SOURCE and calls it with the element, so the caller's body is
-    // passed AS IS. Wrapping it in another arrow would shadow the caller's own parameter — which is
-    // what made the live test return ''.
-    expect(seen[0]).toBe('(el) => el.textContent')
+    // The caller's body is CALLED with the element: `(el) => el.textContent` alone is a function
+    // value that nobody invokes. locator.evaluate cannot be used at all — its parameter is a real
+    // PageFunction, so source there is called as if it were one and yields undefined.
+    expect(seen[0]).toBe('((el) => el.textContent)(el)')
   })
 
   // A missing argument must be an ERROR, not a hang. This is the case the report could not get a

@@ -146,22 +146,30 @@ export function interactionTools(): Record<string, Exec> {
   const evaluate: Exec = async (_ctx, session, args) => {
     const fn = requireArg(args, 'function')
     const target = strArg(args, 'target')
-    // The two Playwright calls take a string with DIFFERENT semantics, and the first version
-    // treated them the same — which is why the live browser test returned '' for one and worked for
-    // the other:
+    // Source goes to `page.evaluate`, which treats it as an expression and returns its value.
+    // `locator.evaluate` is NOT an option: its parameter is a `PageFunction`, a real function, so a
+    // string there is called as if it were one and yields undefined — an empty result with no error,
+    // which is exactly what the live browser test reported.
     //
-    //   page.evaluate(src)          src is an EXPRESSION; its VALUE is returned. A function literal
-    //                               is a value, so the call has to be part of it: `(${fn})()`.
-    //   locator.evaluate(src)       src is a FUNCTION SOURCE; Playwright CALLS it with the element.
-    //                               Wrapping it in another arrow passes the wrapper's parameter,
-    //                               shadowing the caller's own name — so `(el) => ((el) => el.text)`
-    //                               runs with the WRONG binding and yields nothing.
-    const value =
-      target !== ''
-        ? // `as never`: the overload wants a typed PageFunction, but what we have is SOURCE — which
-          // is exactly what Playwright accepts at runtime for this call.
-          await resolveLocator(session.page, target).evaluate(fn as never)
-        : await session.page.evaluate(`(${fn})()`)
+    // For the element form the element is handed over as a HANDLE. An ElementHandle argument is
+    // unwrapped by Playwright into the real DOM node on the page side, so the caller's body sees the
+    // element rather than a serialised copy — the reason a plain object argument would not do.
+    let value: unknown
+    if (target === '') {
+      //   (${fn})()   evaluate the caller's expression, then call it with no argument
+      value = await session.page.evaluate(`(${fn})()`)
+    } else {
+      const handle = await resolveLocator(session.page, target).elementHandle()
+      if (handle === null) {
+        throw new Error(`no element matches ${target}`)
+      }
+      try {
+        //   (${fn})(el)   el is the resolved DOM element
+        value = await session.page.evaluate(`(${fn})(el)`, handle)
+      } finally {
+        await handle.dispose().catch(() => undefined)
+      }
+    }
     return { content: render(value) }
   }
 
