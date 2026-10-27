@@ -55,7 +55,7 @@ describe('browser-evaluate', () => {
     // The caller's body is CALLED with the element: `(el) => el.textContent` alone is a function
     // value that nobody invokes. locator.evaluate cannot be used at all — its parameter is a real
     // PageFunction, so source there is called as if it were one and yields undefined.
-    expect(seen[0]).toBe('((el) => el.textContent)(el)')
+    expect(seen[0]).toBe('(arg) => ((el) => el.textContent)(arg)')
   })
 
   // A missing argument must be an ERROR, not a hang. This is the case the report could not get a
