@@ -25,6 +25,14 @@ export interface SeleniumBrowserFactoryOpts {
   ignoreHttpsErrors: boolean
   /** Overall CDP attach timeout. */
   cdpTimeoutMs: number
+  /**
+   * How to attach to the driver's CDP endpoint.
+   *
+   * Injected so `create()` can be tested end to end without a Selenium node: the behaviour that
+   * regressed here — the viewport never being applied — lives in this method, and a test that only
+   * stubs the page cannot see whether the method calls it.
+   */
+  connect?: (cdpUrl: string, timeoutMs: number) => Promise<Browser>
 }
 
 interface SeleniumSession {
@@ -92,9 +100,10 @@ export class SeleniumBrowserFactory {
       )
     }
 
-    const browser = await chromium.connectOverCDP(cdpUrl, {
-      timeout: this.opts.cdpTimeoutMs,
-    })
+    const browser = await (
+      this.opts.connect ??
+      ((url, timeoutMs) => chromium.connectOverCDP(url, { timeout: timeoutMs }))
+    )(cdpUrl, this.opts.cdpTimeoutMs)
     // Reuse the driver-created context/page (the session owns the browser);
     // create one if the node started with none.
     const contexts = browser.contexts()
@@ -109,6 +118,19 @@ export class SeleniumBrowserFactory {
     }
     const pages = context.pages()
     const page = pages[0] ?? (await context.newPage())
+    // APPLY THE CONFIGURED VIEWPORT TO THE EXISTING PAGE.
+    //
+    // Selenium ALWAYS creates a context, so the branch above never runs against it — which meant the
+    // `viewport` option was declared, documented, and never once applied. Measured: with
+    // PLAYWRIGHT_VIEWPORT=1280x720 the page reported 937x891, which is Chrome's default window
+    // interior on a 1920x1080 screen. Every screenshot and every responsive layout the agent saw was
+    // that size, not the configured one.
+    //
+    // Set explicitly, after the page exists: `setViewportSize` works on a live page, where
+    // `browser.newContext` only ever affects contexts this code creates.
+    if (this.opts.viewport !== null) {
+      await page.setViewportSize(this.opts.viewport)
+    }
     page.setDefaultTimeout(30_000)
     return { sessionId, cdpUrl, browser, page }
   }
