@@ -131,6 +131,20 @@ export class SeleniumBrowserFactory {
     if (this.opts.viewport !== null) {
       await page.setViewportSize(this.opts.viewport)
     }
+    // APPLY ignoreHTTPSErrors TO THE EXISTING CONTEXT, for the same reason as the viewport.
+    //
+    // It was only ever passed to `browser.newContext(...)` — the branch that never runs, because
+    // Selenium always creates a context. So the option had no effect either, and a deployment that set
+    // PLAYWRIGHT_IGNORE_HTTPS_ERRORS still refused to load a host with an untrusted certificate.
+    //
+    // Playwright has no `context.setIgnoreHTTPSErrors`, so this goes through CDP directly. Sessions
+    // are created per page: the setting is a session-scoped override, which is exactly the granularity
+    // this needs — one attached page, not the whole browser.
+    if (this.opts.ignoreHttpsErrors) {
+      const cdp = await context.newCDPSession(page)
+      await cdp.send('Security.enable')
+      await cdp.send('Security.setIgnoreCertificateErrors', { ignore: true })
+    }
     page.setDefaultTimeout(30_000)
     return { sessionId, cdpUrl, browser, page }
   }

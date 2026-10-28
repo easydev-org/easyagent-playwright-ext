@@ -31,9 +31,17 @@ function fakePage() {
  * loudly instead of quietly doing the wrong thing.
  */
 function driverBrowser(page: ReturnType<typeof fakePage>) {
-  const context = { pages: () => [page], newPage: () => Promise.resolve(page) }
+  const cdpSend = vi.fn(() => Promise.resolve({}))
+  const context = {
+    pages: () => [page],
+    newPage: () => Promise.resolve(page),
+    // The certificate override goes through CDP, because Playwright has no
+    // `context.setIgnoreHTTPSErrors`. Recorded so the tests can assert it was sent.
+    newCDPSession: () => Promise.resolve({ send: cdpSend }),
+  }
   return {
     contexts: () => [context],
+    newlyAttached: cdpSend,
     newContext: () => {
       throw new Error('newContext must not be called: the driver already made one')
     },
@@ -106,6 +114,41 @@ describe('SeleniumBrowserFactory.create', () => {
     expect(s.sessionId).toBe('abc')
     expect(s.cdpUrl).toBe('ws://driver/session/abc/se/cdp')
     expect(s.page).toBe(page)
+    vi.unstubAllGlobals()
+  })
+
+  // The same dead branch made `ignoreHTTPSErrors` do nothing, so a deployment that set
+  // PLAYWRIGHT_IGNORE_HTTPS_ERRORS still refused any host with an untrusted certificate.
+  it('turns off certificate checks over CDP when configured', async () => {
+    const page = fakePage()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+
+    const f = new SeleniumBrowserFactory(
+      opts(null, {
+        ignoreHttpsErrors: true,
+        connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser),
+      }),
+    )
+    const b = await f.create()
+
+    const send = (b.browser as unknown as { newlyAttached: ReturnType<typeof vi.fn> }).newlyAttached
+    expect(send).toHaveBeenCalledWith('Security.enable')
+    expect(send).toHaveBeenCalledWith('Security.setIgnoreCertificateErrors', { ignore: true })
+    vi.unstubAllGlobals()
+  })
+
+  // Off by default: silently disabling certificate checks everywhere would be worse than the bug.
+  it('leaves certificate checks alone when not configured', async () => {
+    const page = fakePage()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+
+    const f = new SeleniumBrowserFactory(
+      opts(null, { connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser) }),
+    )
+    const b = await f.create()
+
+    const send = (b.browser as unknown as { newlyAttached: ReturnType<typeof vi.fn> }).newlyAttached
+    expect(send).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 })

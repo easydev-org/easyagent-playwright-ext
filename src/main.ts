@@ -106,6 +106,11 @@ async function main(): Promise<void> {
             id: 'playwright',
             title: 'Browser',
             apiPrefix: '/api',
+            descriptions: {
+              en: 'Open browsers the agent is driving, live.',
+              zh: '查看 agent 正在驱动的浏览器，实时画面。',
+            },
+            icon: '/icon.svg',
           },
         )
 
