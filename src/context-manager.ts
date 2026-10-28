@@ -24,6 +24,52 @@ export interface BrowserSession {
   busy: boolean
 }
 
+/**
+ * One context, as the browser UI sees it.
+ *
+ * Metadata only, and everything optional that a live Page might refuse to answer: a page can be
+ * mid-navigation or already closing, and a listing endpoint that throws because one context is busy
+ * would hide the other seven.
+ */
+export interface ContextInfo {
+  contextId: string
+  /** Which conversation opened it — the UI shows this so a reader knows where it came from. */
+  session: string
+  url: string
+  title: string
+  createdAt: number
+  lastUsedAt: number
+  /** True while a tool action is running: a screenshot then may be mid-change. */
+  busy: boolean
+  /** False for a page that has been closed but whose record has not been reaped yet. */
+  alive: boolean
+}
+
+/** The current URL, or '' when the page cannot say (closed, mid-navigation). */
+function safeURL(page: Page): string {
+  try {
+    return page.url()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * A title for the row, from the URL when the document has not been read yet.
+ *
+ * Deliberately NOT `await page.title()`: a listing must not await every page, because one that is
+ * mid-load would hold the whole list. The URL's last segment is a good enough label for a list of
+ * browsers, and the page itself is one click away.
+ */
+function safeTitle(page: Page): string {
+  try {
+    const u = new URL(page.url())
+    return u.host + (u.pathname === '/' ? '' : u.pathname)
+  } catch {
+    return ''
+  }
+}
+
 export interface ContextManagerOpts {
   /** Close a context after this many ms without a tool call (0 disables). */
   idleTimeoutMs: number
@@ -84,6 +130,40 @@ export class ContextManager {
 
   size(): number {
     return this.sessions.size
+  }
+
+  /**
+   * Every live context belonging to one TENANT, most recently used first.
+   *
+   * For the browser UI, which shows what is running. Tenant-scoped rather than session-scoped on
+   * purpose: a context is the tenant's own browser, and the same person looking at the panel from
+   * another conversation — or from the extension's own tab, which has no session — is still the same
+   * person. Ownership that stopped at the session would show a list and then refuse to open it.
+   *
+   * Returns a SNAPSHOT of metadata, never the Playwright objects: the caller serialises this to JSON,
+   * and a Page is a live handle that would either fail to serialise or leak internals.
+   */
+  listForTenant(tenant: string): ContextInfo[] {
+    const out: ContextInfo[] = []
+    for (const s of this.sessions.values()) {
+      if (s.tenant !== tenant) continue
+      out.push({
+        contextId: s.contextId,
+        session: s.session,
+        url: safeURL(s.page),
+        title: safeTitle(s.page),
+        createdAt: s.createdAt,
+        lastUsedAt: s.lastUsedAt,
+        busy: s.busy,
+        // A closed page can still have a record for a moment; the UI must not offer a screenshot it
+        // cannot take.
+        alive: !s.page.isClosed(),
+      })
+    }
+    // Most recently used first: a map's iteration order would reshuffle on every request, which reads
+    // as "the one I just touched moved somewhere".
+    out.sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+    return out
   }
 
   /** Create a context and return its minted key. */

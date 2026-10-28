@@ -40,5 +40,12 @@ WORKDIR /app
 COPY --from=build /build/node_modules/playwright-core node_modules/playwright-core
 COPY --from=build /build/dist/main.js dist/main.js
 COPY --from=build /build/package.json package.json
+# The browser panel. Copied verbatim — it is a static HTML document and one ES module, with no build
+# step, so there is nothing to compile and nothing that can drift from the source.
+#
+# PLAYWRIGHT_UI_DIR is what TURNS IT ON: without it the server keeps exactly the surface it had before.
+# A deployment that does not want a panel pays nothing, and one that does gets it by mounting this.
+COPY ui ui
+ENV PLAYWRIGHT_UI_DIR=/app/ui
 EXPOSE 8080
 CMD ["node", "dist/main.js"]

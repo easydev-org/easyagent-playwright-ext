@@ -1,5 +1,10 @@
 import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { resolve } from 'node:path'
 import { servePlaywright } from './serve.js'
+import { mountUI } from '@easydev-org/easybus-sdk'
+import { agentIdentity } from './ui/identity.js'
+import { uiHandler } from './ui/server.js'
 
 /** Read a positive integer env var, or a default. */
 function intEnv(name: string, def: number): number {
@@ -36,7 +41,7 @@ async function main(): Promise<void> {
         }
       : { kind: 'cdp', endpoint: cdpEndpoint }
 
-  const { stop } = await servePlaywright({
+  const { stop, manager } = await servePlaywright({
     natsUrl,
     extension: {
       target,
@@ -55,10 +60,15 @@ async function main(): Promise<void> {
     } (idle=${intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000)}ms, max=${intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8)})`,
   )
 
-  // Minimal HTTP surface for Kubernetes probes (the extension itself speaks
-  // only the easybus protocol over NATS).
+  // HTTP surface: Kubernetes probes, plus the browser panel's data API.
+  //
+  // The PANEL IS OPT-IN. `PLAYWRIGHT_UI_DIR` points at a built frontend; without it the server keeps
+  // exactly the surface it had before, so a deployment that does not want a panel pays nothing and
+  // changes nothing.
   const port = intEnv('PORT', 8080)
-  const http = createServer((req, res) => {
+
+  /** Probes and the extension's own API. */
+  const api = (req: IncomingMessage, res: ServerResponse): void => {
     res.setHeader('content-type', 'application/json')
     if (req.url === '/api/v1/health') {
       res.end(JSON.stringify({ ok: true, id: 'playwright' }))
@@ -66,7 +76,40 @@ async function main(): Promise<void> {
     }
     res.statusCode = 404
     res.end('{}')
-  })
+  }
+
+  const uiDir = process.env['PLAYWRIGHT_UI_DIR'] ?? ''
+  const agentURL = process.env['AGENT_URL'] ?? ''
+  // The panel's API answers only when both the bundle AND an identity source are configured: a panel
+  // that cannot tell who is asking must not list anybody's browsers.
+  const panel =
+    uiDir !== '' && agentURL !== ''
+      ? uiHandler({ contexts: manager, identity: agentIdentity({ agentURL }) })
+      : undefined
+
+  const handler =
+    uiDir === ''
+      ? api
+      : mountUI(
+          // Paths outside the mount reach `api`; under the mount, `/api/*` reaches the panel.
+          (req, res) => {
+            const p = (req.url ?? '/').split('?')[0] ?? '/'
+            if (p.startsWith('/ext/playwright/api/')) {
+              void (panel ?? api)(req, res)
+              return
+            }
+            api(req, res)
+          },
+          {
+            dir: resolve(uiDir),
+            base: '/ext/playwright',
+            id: 'playwright',
+            title: 'Browser',
+            apiPrefix: '/api',
+          },
+        )
+
+  const http = createServer(handler)
   http.listen(port, () => console.log(`[playwright] http :${port}`))
 
   const shutdown = (): void => {

@@ -1,4 +1,5 @@
 import { type Bus, connect, Extension } from '@easydev-org/easybus-sdk'
+import type { ContextManager } from './context-manager.js'
 import {
   createPlaywrightExtension,
   type PlaywrightExtensionOpts,
@@ -22,7 +23,18 @@ export interface ServePlaywrightOpts {
  */
 export async function servePlaywright(
   opts: ServePlaywrightOpts,
-): Promise<{ stop: () => Promise<void>; bus: Bus; controller: AbortController }> {
+): Promise<{
+  stop: () => Promise<void>
+  bus: Bus
+  controller: AbortController
+  /**
+   * The live contexts, so the HTTP layer can list them.
+   *
+   * Returned rather than reached for through a module global: the panel reads this on every request,
+   * and a global would make a second extension in the same process see the first one's browsers.
+   */
+  manager: ContextManager
+}> {
   const bus = await connect(opts.natsUrl)
   const controller = new AbortController()
   let ext: Extension | undefined
@@ -36,6 +48,7 @@ export async function servePlaywright(
   return {
     bus,
     controller,
+    manager: bundle.manager,
     stop: async () => {
       controller.abort()
       await bundle.stop()

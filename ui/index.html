@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browser</title>
+    <style>
+      /*
+       * No build step and no framework. This panel does three things — list contexts, show one
+       * screenshot, redraw it on a timer — and a bundler would be more moving parts than the feature.
+       * The whole UI is this file, which is also what makes it easy to audit: there is nowhere else
+       * for a request to come from.
+       *
+       * The palette mirrors the host's so an embedded panel does not look like a different product.
+       */
+      :root {
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --card: #f9fafb;
+        --primary: #2563eb;
+        --danger: #dc2626;
+      }
+      html[data-theme='dark'] {
+        --bg: #0f1115;
+        --fg: #e6e8eb;
+        --muted: #9aa3ad;
+        --border: #262b33;
+        --card: #161a20;
+        --primary: #60a5fa;
+        --danger: #f87171;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+          'Noto Sans CJK SC', ui-sans-serif, sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      #app { display: flex; height: 100%; min-height: 0; }
+
+      /* A rail of contexts, and the page beside it. On a narrow panel the rail becomes the page and
+         picking one replaces it, with a back arrow — the same shape the host uses for its own pages. */
+      aside {
+        width: 220px;
+        flex: 0 0 auto;
+        border-right: 1px solid var(--border);
+        overflow: auto;
+        padding: 6px;
+      }
+      main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        min-width: 0;
+      }
+      header .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .muted { color: var(--muted); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .micro { font-size: 11px; }
+
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+      .row {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        width: 100%;
+        text-align: left;
+        padding: 6px 8px;
+        border-radius: 6px;
+      }
+      .row:hover { background: var(--card); }
+      .row.active { background: var(--primary); color: #fff; }
+      .row.active .muted { color: #dbeafe; }
+      .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .stage {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        overflow: auto;
+        padding: 10px;
+        background: var(--card);
+      }
+      .stage img {
+        max-width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fff;
+      }
+      .state { margin: auto; text-align: center; color: var(--muted); padding: 24px; }
+      .state.err { color: var(--danger); }
+
+      .pill {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        padding: 1px 5px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+      }
+      .pill.busy { color: var(--primary); border-color: var(--primary); }
+      .pill.dead { color: var(--danger); border-color: var(--danger); }
+
+      /* A touch wider than the rail on a phone: the list becomes the whole panel. */
+      @media (max-width: 640px) {
+        aside { width: 100%; border-right: 0; }
+        main.hidden { display: none; }
+        aside.hidden { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
