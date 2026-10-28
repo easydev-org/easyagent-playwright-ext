@@ -58,6 +58,14 @@ jobs:
           # Scoped per architecture: a cache written by the arm64 runner is useless to the amd64 one.
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+          # The SDK comes from GitHub Packages, which authenticates even for a read. The Dockerfile
+          # mounts this as a BuildKit secret so the token never lands in a layer or in `docker history`.
+          #
+          # WITHOUT THIS THE BUILD STILL "WORKS" UNTIL IT DOES NOT: a warm layer cache hides it, and
+          # the moment the SDK moves the install runs for real and fails with E401 on an empty
+          # NODE_AUTH_TOKEN. That is exactly how it was found.
+          secrets: |
+            npm_token=${{ secrets.GITHUB_TOKEN }}
           provenance: true
           sbom: true
 
