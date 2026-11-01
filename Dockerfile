@@ -40,12 +40,14 @@ WORKDIR /app
 COPY --from=build /build/node_modules/playwright-core node_modules/playwright-core
 COPY --from=build /build/dist/main.js dist/main.js
 COPY --from=build /build/package.json package.json
-# The browser panel. Copied verbatim — it is a static HTML document and one ES module, with no build
-# step, so there is nothing to compile and nothing that can drift from the source.
+# NO UI IN THIS IMAGE.
 #
-# PLAYWRIGHT_UI_DIR is what TURNS IT ON: without it the server keeps exactly the surface it had before.
-# A deployment that does not want a panel pays nothing, and one that does gets it by mounting this.
-COPY ui ui
-ENV PLAYWRIGHT_UI_DIR=/app/ui
+# The panel is easydev-org/easyagent-playwright-ext-ui, installed and served by easyagent-ext-ui-host.
+# What this image keeps is the DATA the panel reads: /ext/playwright/api/contexts and the per-context
+# frame endpoint, served by dist/main.js from the live contexts only this process knows about.
+#
+# The `ui/` directory and the PLAYWRIGHT_UI_DIR that turned it on are both gone, because a
+# second copy of the panel is a second answer to "what does this panel look like" — and the console
+# asks the install host, so the copy here would only ever be served to a reader who bypassed it.
 EXPOSE 8080
 CMD ["node", "dist/main.js"]

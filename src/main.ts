@@ -1,8 +1,6 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { resolve } from 'node:path'
 import { servePlaywright } from './serve.js'
-import { mountUI } from '@easydev-org/easybus-sdk'
 import { agentIdentity } from './ui/identity.js'
 import { uiHandler } from './ui/server.js'
 
@@ -62,9 +60,13 @@ async function main(): Promise<void> {
 
   // HTTP surface: Kubernetes probes, plus the browser panel's data API.
   //
-  // The PANEL IS OPT-IN. `PLAYWRIGHT_UI_DIR` points at a built frontend; without it the server keeps
-  // exactly the surface it had before, so a deployment that does not want a panel pays nothing and
-  // changes nothing.
+  // THE PANEL'S FILES ARE NOT SERVED HERE ANY MORE. They are
+  // easydev-org/easyagent-playwright-ext-ui, installed and served by easyagent-ext-ui-host — so this
+  // binary carries no assets and this file has no UI directory to mount.
+  //
+  // WHAT STAYS IS THE DATA. `/ext/playwright/api/contexts` and the per-context frame endpoint are this
+  // extension's own API: they read the live browser contexts, which only this process knows about.
+  // The host forwards exactly those paths here; the panel itself never reaches this server.
   const port = intEnv('PORT', 8080)
 
   /** Probes and the extension's own API. */
@@ -78,41 +80,33 @@ async function main(): Promise<void> {
     res.end('{}')
   }
 
-  const uiDir = process.env['PLAYWRIGHT_UI_DIR'] ?? ''
   const agentURL = process.env['AGENT_URL'] ?? ''
-  // The panel's API answers only when both the bundle AND an identity source are configured: a panel
-  // that cannot tell who is asking must not list anybody's browsers.
-  const panel =
-    uiDir !== '' && agentURL !== ''
-      ? uiHandler({ contexts: manager, identity: agentIdentity({ agentURL }) })
-      : undefined
+  // THE DATA API ANSWERS ONLY WITH AN IDENTITY SOURCE: a panel that cannot tell who is asking must not
+  // list anybody's browsers. That check lives in uiHandler, so wiring it unconditionally is right —
+  // without an identity it refuses, which is the same answer as not being configured.
+  const panel = uiHandler({ contexts: manager, identity: agentIdentity({ agentURL }) })
 
-  const handler =
-    uiDir === ''
-      ? api
-      : mountUI(
-          // Paths outside the mount reach `api`; under the mount, `/api/*` reaches the panel.
-          (req, res) => {
-            const p = (req.url ?? '/').split('?')[0] ?? '/'
-            if (p.startsWith('/ext/playwright/api/')) {
-              void (panel ?? api)(req, res)
-              return
-            }
-            api(req, res)
-          },
-          {
-            dir: resolve(uiDir),
-            base: '/ext/playwright',
-            id: 'playwright',
-            title: 'Browser',
-            apiPrefix: '/api',
-            descriptions: {
-              en: 'Open browsers the agent is driving, live.',
-              zh: '查看 agent 正在驱动的浏览器，实时画面。',
-            },
-            icon: '/icon.svg',
-          },
-        )
+  /**
+   * Routes one request.
+   *
+   * THE PANEL'S PATHS ARE A PREFIX TEST, NOT A MOUNT: `/ext/playwright/api/` is answered here, and
+   * everything else is the probes. The old code mounted a directory and let the SDK decide, which
+   * needed a UI directory to exist; there is no directory now, and the split is three lines.
+   */
+  const handler = (req: IncomingMessage, res: ServerResponse): void => {
+    const p = (req.url ?? '/').split('?')[0] ?? '/'
+    if (p.startsWith('/ext/playwright/api/')) {
+      if (agentURL === '') {
+        res.statusCode = 503
+        res.setHeader('content-type', 'application/json')
+        res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
+        return
+      }
+      void panel(req, res)
+      return
+    }
+    api(req, res)
+  }
 
   const http = createServer(handler)
   http.listen(port, () => console.log(`[playwright] http :${port}`))
