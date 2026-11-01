@@ -2,7 +2,9 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { servePlaywright } from './serve.js'
 import { agentIdentity } from './ui/identity.js'
-import { uiHandler } from './ui/server.js'
+import { uiService } from './ui/service.js'
+import { connectNodeAdapter } from '@connectrpc/connect-node'
+import { UiService } from './gen/ui/v1/ui_pb.js'
 
 /** Read a positive integer env var, or a default. */
 function intEnv(name: string, def: number): number {
@@ -81,17 +83,22 @@ async function main(): Promise<void> {
   }
 
   const agentURL = process.env['AGENT_URL'] ?? ''
-  // THE DATA API ANSWERS ONLY WITH AN IDENTITY SOURCE: a panel that cannot tell who is asking must not
-  // list anybody's browsers. That check lives in uiHandler, so wiring it unconditionally is right —
-  // without an identity it refuses, which is the same answer as not being configured.
-  const panel = uiHandler({ contexts: manager, identity: agentIdentity({ agentURL }) })
+  /**
+   * THE PANEL'S API, AS A CONNECT SERVICE.
+   *
+   * The tenant is resolved from the caller's bearer inside the service, so wiring it unconditionally is
+   * right: without an identity source it refuses every call, which is the same answer as not being
+   * configured — and one the caller can act on.
+   */
+  const panel = connectNodeAdapter({
+    routes: router => router.service(UiService, uiService({ contexts: manager, identity: agentIdentity({ agentURL }) })),
+  })
 
   /**
    * Routes one request.
    *
-   * THE PANEL'S PATHS ARE A PREFIX TEST, NOT A MOUNT: `/ext/playwright/api/` is answered here, and
-   * everything else is the probes. The old code mounted a directory and let the SDK decide, which
-   * needed a UI directory to exist; there is no directory now, and the split is three lines.
+   * `/ext/playwright/api/` is the panel's surface and reaches Connect; everything else is the probes.
+   * Connect decides which PATH inside that prefix is an RPC, so this file does not enumerate them.
    */
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const p = (req.url ?? '/').split('?')[0] ?? '/'
@@ -102,7 +109,13 @@ async function main(): Promise<void> {
         res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
         return
       }
-      void panel(req, res)
+      // THE PATH THE PANEL CALLS IS /ext/playwright/api/ui.v1.UiService/...; Connect mounts procedures
+      // at their own absolute path, so the prefix is stripped here rather than duplicated in every
+      // generated client.
+      const raw = req.url ?? ''
+      const query = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
+      req.url = p.slice('/ext/playwright/api'.length) + query
+      panel(req, res)
       return
     }
     api(req, res)

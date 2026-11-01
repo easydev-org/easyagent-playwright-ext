@@ -1,0 +1,13 @@
+version: v2
+# TYPESCRIPT, NOT GO: this extension's backend is TypeScript too. The same generated file serves the
+# server and the panel, which is the strongest version of "one contract" — there is no second
+# generator and no second language to disagree with this one.
+#
+# The panel (easydev-org/easyagent-playwright-ext-ui) generates from its own copy of this .proto, kept
+# byte-identical by that repository's CI.
+plugins:
+  - local: protoc-gen-es
+    out: ../src/gen
+    opt:
+      - target=ts
+      - import_extension=js

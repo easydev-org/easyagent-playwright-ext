@@ -1,0 +1,64 @@
+// The playwright extension's UI API.
+//
+// THIS FILE IS THE CONTRACT between this extension and its browser panel, which lives in
+// easydev-org/easyagent-playwright-ext-ui and is served by easyagent-ext-ui-host. It replaces two
+// hand-written JSON routes whose shapes were object literals written at the point of emission.
+//
+// TWO RPCs, because the panel does two things: list the browsers this caller owns, and fetch one
+// screenshot of one of them. A screenshot is `bytes` rather than a base64 string — the old route
+// answered `image/jpeg` and the panel handed the response straight to an <img>, which is a round trip
+// this replaces rather than a shape it changes.
+syntax = "proto3";
+
+package ui.v1;
+
+option go_package = "github.com/easydev-org/easyagent-playwright-ext/gen/ui/v1;uiv1";
+
+service UiService {
+  // ListContexts reports the live browser contexts belonging to the caller's tenant.
+  //
+  // THE TENANT COMES FROM THE TOKEN, resolved by an interceptor — never from the request. A context
+  // is somebody's live browser; naming a tenant would read another one's.
+  rpc ListContexts(ListContextsRequest) returns (ListContextsResponse);
+
+  // GetFrame returns one JPEG screenshot of one context's page.
+  //
+  // A SCREENSHOT, NOT A STREAM. A screencast needs a WebSocket per context, a backpressure story and
+  // a teardown path for every way a browser tab can disappear — for a debugging panel that is a lot
+  // of machinery to get right. One request cannot leak, and the page is a value that dies with the
+  // response. The panel polls at about 1 fps, which is enough to watch an agent work.
+  rpc GetFrame(GetFrameRequest) returns (GetFrameResponse);
+}
+
+// Context is one live browser context.
+message Context {
+  string context_id = 1;
+  // Which conversation opened it, so a reader knows where it came from — the panel lists every
+  // context a tenant owns, and a name alone does not say which task it belongs to.
+  string session = 2;
+  string url = 3;
+  string title = 4;
+  // Unix MILLISECONDS, as the manager records them.
+  int64 created_at = 5;
+  int64 last_used_at = 6;
+  // True while a tool action is running: a screenshot then may be mid-change.
+  bool busy = 7;
+  // False for a page that has been closed but whose record has not been reaped yet. The panel must
+  // not offer a screenshot it cannot take.
+  bool alive = 8;
+}
+
+message ListContextsRequest {}
+message ListContextsResponse {
+  repeated Context contexts = 1;
+  int32 count = 2;
+}
+
+message GetFrameRequest {
+  string context_id = 1;
+}
+message GetFrameResponse {
+  // JPEG bytes at moderate quality: a PNG of a real page is megabytes, and this is refreshed about
+  // once a second.
+  bytes jpeg = 1;
+}
