@@ -1,9 +1,32 @@
-// Shared tool-layer primitives. Argument-coercion comes from the easybus SDK's
-// extension-kit; the locator/snapshot/log helpers are the extension's own.
-import { argBool, argFloat, argStrArray, argString } from '@easydev-org/easybus-sdk'
+// Shared tool-layer primitives.
+//
+// THE ARG READERS ARE LOCAL. They came from @easydev-org/easybus-sdk's extension kit, which is now a
+// Go package — copying four three-line coercions is what lets this process drop the bus dependency
+// entirely, and they are the kind of thing that is easier to read here than to import.
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
 import type { BrowserSession, ContextManager } from '../context-manager.js'
 import type { PlaywrightDeps } from '../deps.js'
+
+/** argString reads a string argument ('' when absent/wrong type). */
+export function argString(args: Record<string, unknown>, key: string): string {
+  const v = args[key]
+  return typeof v === 'string' ? v : ''
+}
+/** argBool reads a boolean argument (the default when absent/wrong type). */
+export function argBool(args: Record<string, unknown>, key: string, def: boolean): boolean {
+  const v = args[key]
+  return typeof v === 'boolean' ? v : def
+}
+/** argFloat reads a number argument (the default when absent/wrong type). */
+export function argFloat(args: Record<string, unknown>, key: string, def: number): number {
+  const v = args[key]
+  return typeof v === 'number' ? v : def
+}
+/** argStrArray reads a string[] argument ([] when absent/wrong type). */
+export function argStrArray(args: Record<string, unknown>, key: string): string[] {
+  const v = args[key]
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
 
 /** strArg reads a string argument ('' when absent/wrong type). */
 export function strArg(args: Record<string, unknown>, key: string): string {
@@ -24,22 +47,28 @@ export function strArray(args: Record<string, unknown>, key: string): string[] {
   return argStrArray(args, key)
 }
 // Keep the raw SDK readers importable for callers that prefer them.
-export { argBool, argFloat, argString }
 
 /**
- * Resolve an official `target` argument to a Playwright Locator. The snapshot
- * emits `[ref=eN]` markers (via `page.ariaSnapshot({mode:'ai'})`), and the
- * `aria-ref` engine resolves them against that last AI snapshot; anything else
- * is treated as a normal Playwright selector.
+ * Resolve an official `target` argument to a Playwright Locator. The snapshot emits `[ref=…]`
+ * markers (via `page.ariaSnapshot({mode:'ai'})`), and the `aria-ref` engine resolves them against
+ * that last AI snapshot; anything else is treated as a normal Playwright selector.
+ *
+ * THE MARKER IS NOT ALWAYS `eN`. On a page with frames Playwright prefixes the frame, so the same
+ * button reads `[ref=f1e3]` — and a matcher that only accepted `e12` treated `f1e3` as a CSS
+ * selector, which fails with "no element matches f1e3". Measured against selenium/standalone-chrome
+ * 4.49: every snapshot on a page with any frame produced prefixed refs, so this was the common case,
+ * not an edge one.
+ *
+ * The shape is `<frame-prefix>e<number>`, where the prefix is absent on the main frame only.
  */
 export function resolveLocator(page: Page, target: string): Locator {
   const t = target.trim()
-  if (/^e\d+$/.test(t)) return page.locator(`aria-ref=${t}`)
+  if (/^[a-z]\d*e\d+$/.test(t) || /^e\d+$/.test(t)) return page.locator(`aria-ref=${t}`)
   return page.locator(t)
 }
 
 /**
- * Capture the page accessibility snapshot in AI mode (elements carry `[ref=eN]`
+ * Capture the page accessibility snapshot in AI mode (elements carry `[ref=…]`
  * so a later `target: "eN"` resolves). This also seeds the `aria-ref` engine.
  */
 export async function captureSnapshot(

@@ -1,87 +1,33 @@
-import {
-  type Bus,
-  getFileViaAgent,
-  ingestFileViaAgent,
-  sessionVarKey,
-  VARS_BUCKET,
-} from '@easydev-org/easybus-sdk'
-
 /**
- * The runtime surface the playwright extension relies on. The agent supplies
- * the file-ingest path (it owns the blob + metadata backends), so this
- * extension needs no S3 credentials and no database.
+ * The runtime surface a browser tool relies on.
+ *
+ * TWO OF THE THREE ARE NOW CALLBACKS OUT OF THIS PROCESS, and that is the seam the split is built
+ * around: the blob backend and the session-variable projection both live in the Go shell, so a
+ * sidecar cannot answer them itself. They stay declared here because the tools do not care who
+ * answers — they ask for bytes and get bytes.
+ *
+ * `ingestFile` is the exception and is deliberately LOCAL: bytes produced here travel out in the tool
+ * result and the Go shell stores them, so a second uploader in this process would mean two
+ * components writing files with two notions of when they expire.
  */
 export interface PlaywrightDeps {
-  /** Persist arbitrary bytes through the agent and return the canonical
-   *  `file:<code>` plus the agent-derived content type. The caller supplies no
-   *  mime: the agent derives it from the bytes. */
+  /** Name local bytes for the caller; the Go shell performs the actual ingest. */
   ingestFile: (input: {
     name: string
     data: Uint8Array
     session?: string
     tenant?: string
   }) => Promise<{ code: string; mime: string }>
-  /** Fetch stored bytes through the agent (used by browser-file-upload and
-   *  browser-drop when given a `file:<code>`). */
+  /** Fetch stored bytes. Answered by the Go shell, which owns the blob backend. */
   getFile: (
     code: string,
     tenant?: string,
   ) => Promise<{ data: Uint8Array; name: string; mime: string }>
-  /**
-   * Read a session variable the agent projects (vars bucket, provider "agent"),
-   * e.g. `locale`. Returns '' when unset. Used to localize tool results.
-   */
+  /** Read a session variable the agent projects (e.g. `locale`). '' when unset. */
   getSessionVariable: (
     tenant: string,
     provider: string,
     sessionName: string,
     name: string,
   ) => Promise<string>
-}
-
-/**
- * Default deps backed by the agent file RPCs (`easybus.<tenant>.file.ingest` /
- * `.get`). Tenant rides the subject; no separate credential is introduced.
- */
-export function agentFileDeps(bus: Bus): PlaywrightDeps {
-  return {
-    ingestFile: async ({ name, data, session, tenant }) => {
-      if (tenant === undefined || tenant === '') {
-        throw new Error('ingestFile: tenant required')
-      }
-      const stored = await ingestFileViaAgent(bus, tenant, {
-        name,
-        data,
-        ...(session !== undefined && session !== ''
-          ? { sessionName: session }
-          : {}),
-      })
-      return stored
-    },
-    getFile: async (code, tenant) => {
-      if (tenant === undefined || tenant === '') {
-        throw new Error('getFile: tenant required')
-      }
-      const got = await getFileViaAgent(bus, tenant, code)
-      if (got === null) throw new Error(`file not found: ${code}`)
-      return {
-        data: got.data,
-        name: got.meta.name,
-        mime: got.meta.mime,
-      }
-    },
-    getSessionVariable: async (tenant, provider, sessionName, name) => {
-      if (sessionName === '') return ''
-      try {
-        const v = await bus.kvGet(
-          AbortSignal.timeout(3000),
-          VARS_BUCKET,
-          sessionVarKey(tenant, provider, sessionName, name),
-        )
-        return v ?? ''
-      } catch {
-        return ''
-      }
-    },
-  }
 }

@@ -1,14 +1,14 @@
 {
   "name": "@easyagent/playwright-ext",
-  "version": "0.4.3",
-  "description": "Playwright browser extension for easyagent: CDP browser-automation tools (navigate/snapshot/click/type/screenshot) served in-process over the easybus protocol.",
+  "version": "0.7.0",
+  "description": "Playwright browser sidecar for easyagent: CDP browser automation behind one HTTP endpoint. The easybus protocol lives in the Go shell.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./src/main.ts",
+  "types": "./src/main.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./src/main.ts",
+      "default": "./src/main.ts"
     }
   },
   "files": [
@@ -30,7 +30,6 @@
     "@bufbuild/protoc-gen-es": "^2.16.0",
     "@connectrpc/connect": "^2.3.0",
     "@connectrpc/connect-node": "^2.3.0",
-    "@easydev-org/easybus-sdk": "^0.9.3",
     "playwright-core": "^1.63.0"
   },
   "devDependencies": {

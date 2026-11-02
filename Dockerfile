@@ -1,53 +1,62 @@
 # syntax=docker/dockerfile:1
-# The extension drives a REMOTE browser over CDP, so no Chromium is bundled or
-# downloaded (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD).
 #
-# The SDK (@easydev-org/easybus-sdk) is published to the PUBLIC npm registry and
-# ships compiled JS + .d.ts, so this build needs no credential and the runtime
-# image needs no transpiler.
+# TWO PROCESSES, ONE IMAGE: a Go shell that speaks easybus, and a Node sidecar that drives the
+# browser. They run in the same pod and talk over localhost.
 #
-# PORTABILITY: no internal artifact mirror, no proxy, no regional package mirror,
-# no *.svc.cluster.local. Builds identically on a CI runner and a laptop.
-FROM node:26-alpine AS build
+# WHY ONE IMAGE AND NOT TWO. They are one extension with one version: a deploy that pairs shell 0.7
+# with sidecar 0.6 is a deploy nobody tested, and two images means two tags to keep in step. It also
+# keeps the sidecar unreachable from outside — it binds 127.0.0.1 and has no authentication, which is
+# only safe because nothing else can route to it.
+#
+# WHAT IS NOT HERE: Chromium. This drives a REMOTE browser over CDP, so the image stays small.
+#
+# PORTABILITY: no internal artifact mirror, no proxy, no *.svc.cluster.local. Builds identically on a
+# CI runner and a laptop.
+FROM node:26-alpine AS ts
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 WORKDIR /build
-# The lockfile is regenerated when the SDK moves, so it is copied via a wildcard:
-# COPY of a missing file would fail the build.
-COPY package.json package-lock.json* .npmrc tsconfig.json ./
+COPY package.json package-lock.json* tsconfig.json ./
+# NO npm TOKEN NEEDED ANY MORE. The easybus SDK used to come from GitHub Packages, which
+# authenticates even for a read; that dependency moved to Go, so this build reads nothing private.
+RUN npm install --no-audit --no-fund
 COPY scripts scripts
-COPY manifest.yaml manifest.yaml
 COPY src src
+RUN npm run build
 
-# The SDK is installed from GitHub Packages, which authenticates even for a read.
-#
-# The token arrives as a BUILDKIT SECRET, not a build-arg: a build-arg is recorded in the image
-# metadata (`docker history`) and in the provenance attestation, so it would be published with
-# the image. A secret is mounted for this RUN only, and `--mount=type=secret` keeps it out of the
-# layer cache as well.
-#
-# It is read from a file inside that mount and handed to npm through the environment, which is
-# what .npmrc's `_authToken=${NODE_AUTH_TOKEN}` expects — the token never appears in a committed
-# file. An earlier attempt committed a read:packages token; GitHub's secret scanning revoked it
-# and every later install failed.
-RUN --mount=type=secret,id=npm_token \
-    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm install --no-audit && npm run build
+FROM golang:1.26-alpine AS goshell
+WORKDIR /src
+# The module needs the published easybus SDK. GOPROXY is whatever the build environment provides —
+# nothing here names a private registry.
+COPY go.mod ./
+RUN go mod download 2>/dev/null || true
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/playwright-goshell ./cmd/playwright-goshell
 
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates nodejs
 WORKDIR /app
-# playwright-core is external (a real package resolved at runtime); everything
-# else is inlined into dist/main.js.
-COPY --from=build /build/node_modules/playwright-core node_modules/playwright-core
-COPY --from=build /build/dist/main.js dist/main.js
-COPY --from=build /build/package.json package.json
-# NO UI IN THIS IMAGE.
-#
-# The panel is easydev-org/easyagent-playwright-ext-ui, installed and served by easyagent-ext-ui-host.
-# What this image keeps is the DATA the panel reads: /ext/playwright/api/contexts and the per-context
-# frame endpoint, served by dist/main.js from the live contexts only this process knows about.
-#
-# The `ui/` directory and the PLAYWRIGHT_UI_DIR that turned it on are both gone, because a
-# second copy of the panel is a second answer to "what does this panel look like" — and the console
-# asks the install host, so the copy here would only ever be served to a reader who bypassed it.
+
+COPY --from=goshell /out/playwright-goshell /app/playwright-goshell
+# The manifest is READ AT STARTUP by the shell, not embedded, because the sidecar's tool list comes
+# from the same file at build time — two copies is how the sandbox extension ended up with two
+# manifests that had to be kept in step by hand.
+COPY manifest.yaml /app/manifest.yaml
+
+# playwright-core is a real package resolved at runtime; everything else is inlined into main.js.
+COPY --from=ts /build/node_modules/playwright-core /app/node_modules/playwright-core
+COPY --from=ts /build/dist/main.js /app/dist/main.js
+COPY --from=ts /build/package.json /app/package.json
+
+# The supervisor is a shell loop rather than supervisord: two processes, one restart policy, and a
+# dependency (the sidecar's health is part of the shell's readiness, so starting order barely matters).
+COPY --chmod=755 run.sh /app/run.sh
+
+ENV MANIFEST_PATH=/app/manifest.yaml \
+    SIDECAR_URL=http://127.0.0.1:9222 \
+    SIDECAR_PORT=9222 \
+    PORT=8080
+
+# 8080 is the shell (probes + panel data). 9222 is the sidecar and is NEVER published — it is bound to
+# loopback in the sidecar and has no auth, so exposure would be a remote browser with no credential.
 EXPOSE 8080
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["/app/run.sh"]

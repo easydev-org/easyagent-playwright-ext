@@ -1,5 +1,71 @@
-import { BASE_LOCALE, type Catalog, defineI18n } from '@easydev-org/easybus-sdk'
 import type { PlaywrightDeps } from './deps.js'
+
+/**
+ * A LOCAL catalogue lookup, because this process no longer links the SDK.
+ *
+ * It was `defineI18n` from @easydev-org/easybus-sdk — the same three lines of "find the locale's
+ * string, else the base locale, then substitute {placeholders}". Copying them here is what lets the
+ * sdk drop out of this package entirely; the alternative was keeping a bus dependency for a string
+ * table.
+ */
+
+/** The locale every lookup falls back to. */
+const BASE_LOCALE = 'en'
+
+interface Catalog {
+  [key: string]: Record<string, string>
+}
+
+/**
+ * The language subtag: `zh-CN` -> `zh`, `en-GB` -> `en`.
+ *
+ * A REGION-QUALIFIED TAG MUST FIND ITS LANGUAGE'S STRING. Without this `zh-CN` falls through to the
+ * fallback and a Chinese reader gets English — which is not a crash, so nothing reports it, and it
+ * stays wrong until somebody reads the transcript in the wrong language.
+ */
+function baseLang(locale: string): string {
+  const i = locale.indexOf('-')
+  return i > 0 ? locale.slice(0, i) : locale
+}
+
+function translate(
+  catalog: Catalog,
+  key: string,
+  locale: string,
+  params: Record<string, string | number> | undefined,
+  fallback: string,
+): string {
+  const row = catalog[key]
+  // A MISSING KEY IS A BUG IN THIS FILE, not a runtime condition: return the key so it is visible in
+  // the transcript rather than a blank string nobody can trace.
+  if (row === undefined) return key
+  // EXACT TAG FIRST, THEN ITS LANGUAGE, THEN THE FALLBACK — the same order the SDK used, so a
+  // `zh-CN` session and a `zh` session read the same string.
+  for (const cand of [locale, baseLang(locale), fallback, baseLang(fallback)]) {
+    const tpl = row[cand]
+    if (tpl !== undefined) return interpolate(tpl, params)
+  }
+  const any = Object.values(row)[0]
+  return any !== undefined ? interpolate(any, params) : key
+}
+
+function interpolate(text: string, params: Record<string, string | number> | undefined): string {
+  let out = text
+  for (const [k, v] of Object.entries(params ?? {})) {
+    out = out.split(`{${k}}`).join(String(v))
+  }
+  return out
+}
+
+type Translate = (
+  locale: string,
+  key: string,
+  params?: Record<string, string | number>,
+) => string
+
+function defineI18n(catalog: Catalog): { t: Translate } {
+  return { t: (locale, key, params) => translate(catalog, key, locale, params, BASE_LOCALE) }
+}
 
 /**
  * Playwright-extension message catalog for RUNTIME tool text (content + error)
