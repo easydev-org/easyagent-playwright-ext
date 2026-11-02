@@ -84,6 +84,18 @@ export interface SidecarOptions {
    * failing obscurely.
    */
   fetchFile?: (code: string, tenant: string) => Promise<{ data: Uint8Array; name: string; mime: string }>
+  /**
+   * Extra routes served on the SAME port, before /exec.
+   *
+   * WHO USES THIS: the panel's Connect service. It returns a handler that answers true when it took
+   * the request — which is what lets the panel and the tool endpoint share one listener.
+   *
+   * WHY SHARE, RATHER THAN A SECOND LISTENER: the Go shell proxies the panel's `/ext/playwright/api/*`
+   * to this process, and it already proxies to 9222. A second port would mean a second upstream, a
+   * second probe and a second thing to get wrong for no gain — and in a two-process pod, both would
+   * still have to bind loopback, so the security argument is identical.
+   */
+  extraRoutes?: (req: IncomingMessage, res: ServerResponse) => boolean
 }
 
 /**
@@ -236,9 +248,13 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
   }
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    if (opts.extraRoutes?.(req, res) === true) return
     void handle(req, res, run, opts.manager)
   })
 
+  // LOOPBACK ONLY. This endpoint has no authentication — it drives a browser and is reachable from the
+  // sibling container. A Service that published it would be a remote browser anyone on the cluster
+  // could use, so the bind is the boundary rather than a policy that could be forgotten.
   const port = Number.parseInt(process.env['SIDECAR_PORT'] ?? '9222', 10)
   server.listen(port, '127.0.0.1', () => {
     console.log(`[playwright] sidecar on 127.0.0.1:${port} (no protocol, no NATS)`)

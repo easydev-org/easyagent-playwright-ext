@@ -8,7 +8,6 @@
  * same-origin with the console and its API is proxied here by easyagent-ext-ui-host, so the paths keep
  * their absolute `/ext/playwright/api/...` shape.
  */
-import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { connectNodeAdapter } from '@connectrpc/connect-node'
 import { ContextManager } from './context-manager.js'
@@ -113,10 +112,46 @@ async function main(): Promise<void> {
           return { data: Buffer.from(body.bytes, 'base64'), name: body.name, mime: body.mime }
         }
 
+  /**
+   * THE PANEL AND THE TOOL ENDPOINT SHARE ONE LISTENER, and that is why this file no longer starts an
+   * HTTP server of its own.
+   *
+   * The Go shell is the pod's only published port: it serves the probes and proxies the panel's
+   * `/ext/playwright/api/*` here. A second listener would duplicate that upstream for nothing — and
+   * everything here binds loopback anyway, so it would be no safer.
+   */
+  const agentURL = process.env['AGENT_URL'] ?? ''
+  const panel = connectNodeAdapter({
+    routes: router =>
+      router.service(UiService, uiService({ contexts: manager, identity: agentIdentity({ agentURL }) })),
+  })
+
+  /** Hand the panel's paths to Connect; return true when this took the request. */
+  const panelRoutes = (req: IncomingMessage, res: ServerResponse): boolean => {
+    const p = (req.url ?? '/').split('?')[0] ?? '/'
+    if (!p.startsWith('/ext/playwright/api/')) return false
+    if (agentURL === '') {
+      // SAID PLAINLY. Without an identity source every call would be refused anyway; answering 503
+      // with the reason is the version a reader can act on.
+      res.statusCode = 503
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
+      return true
+    }
+    // Connect mounts procedures at their absolute path, so the panel's prefix is stripped here rather
+    // than duplicated in every generated client.
+    const raw = req.url ?? ''
+    const query = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
+    req.url = p.slice('/ext/playwright/api'.length) + query
+    panel(req, res)
+    return true
+  }
+
   const sidecar = startSidecar({
     manager,
     defaultTimeoutMs: intEnv('PLAYWRIGHT_ACTION_TIMEOUT_MS', 30_000),
     ...(fetchFile !== undefined ? { fetchFile } : {}),
+    extraRoutes: panelRoutes,
   })
 
   console.log(
@@ -124,45 +159,7 @@ async function main(): Promise<void> {
       ` (idle=${intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000)}ms, max=${intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8)})`,
   )
 
-  // ── the panel's HTTP surface ────────────────────────────────────────────────
-  const port = intEnv('PORT', 8080)
-  const agentURL = process.env['AGENT_URL'] ?? ''
-
-  const panel = connectNodeAdapter({
-    routes: router => router.service(UiService, uiService({ contexts: manager, identity: agentIdentity({ agentURL }) })),
-  })
-
-  const handler = (req: IncomingMessage, res: ServerResponse): void => {
-    const p = (req.url ?? '/').split('?')[0] ?? '/'
-    if (p.startsWith('/ext/playwright/api/')) {
-      if (agentURL === '') {
-        res.statusCode = 503
-        res.setHeader('content-type', 'application/json')
-        res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
-        return
-      }
-      // Connect mounts procedures at their absolute path, so the panel's prefix is stripped here
-      // rather than duplicated in every generated client.
-      const raw = req.url ?? ''
-      const query = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
-      req.url = p.slice('/ext/playwright/api'.length) + query
-      panel(req, res)
-      return
-    }
-    res.setHeader('content-type', 'application/json')
-    if (p === '/api/v1/health' || p === '/healthz') {
-      res.end(JSON.stringify({ ok: true, id: 'playwright' }))
-      return
-    }
-    res.statusCode = 404
-    res.end('{}')
-  }
-
-  const http = createServer(handler)
-  http.listen(port, () => console.log(`[playwright] http :${port}`))
-
   const shutdown = (): void => {
-    http.close()
     void sidecar.close().finally(() => process.exit(0))
     setTimeout(() => process.exit(0), 5000).unref()
   }
