@@ -7,6 +7,8 @@ import (
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 
+	"github.com/easydev-org/easybus-sdk/manifest"
+
 	"github.com/easydev-org/easyagent-playwright-ext/internal/sidecar"
 )
 
@@ -69,12 +71,30 @@ func TestLoadManifestReadsTheShippedFile(t *testing.T) {
 	// THE MANIFEST IS READ, NOT EMBEDDED, so this is also the check that the image's MANIFEST_PATH is
 	// where the Dockerfile puts it. A missing file must fail loudly at startup rather than leave this
 	// process advertising no tools.
+	//
+	// The default is relative (`manifest.yaml`), which is right for the image — the shell runs with
+	// WORKDIR /app beside the file. A test runs from this package's directory, so it points at the
+	// repository root explicitly rather than depending on where `go test` was invoked.
+	t.Setenv("MANIFEST_PATH", "../../manifest.yaml")
+
 	raw, err := loadManifest()
 	if err != nil {
 		t.Fatalf("loadManifest: %v", err)
 	}
 	if len(raw) == 0 {
 		t.Fatal("manifest is empty")
+	}
+	// Parsing it is the real assertion: a manifest that reads but does not parse would start a
+	// process that answers discovery with nothing.
+	m, err := manifest.ParseManifest(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if m.ID != "playwright" {
+		t.Errorf("id = %q, want playwright", m.ID)
+	}
+	if len(m.Tools) == 0 {
+		t.Error("manifest declares no tools")
 	}
 }
 
