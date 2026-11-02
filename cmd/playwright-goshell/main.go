@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"time"
 
@@ -155,7 +157,7 @@ func main() {
 
 	if err := extension.Serve(ext, extension.ServeOptions{
 		// NO UI SPEC. The panel is easyagent-ext-ui-host's to serve; this binary is a backend.
-		Handler: uiMux(sc, bus),
+		Handler: uiMux(sc, bus, envOr("SIDECAR_URL", "http://127.0.0.1:9222")),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("serving", "nats", envOr("NATS_URL", ""), "sidecar", envOr("SIDECAR_URL", ""))
 		},
@@ -198,7 +200,7 @@ func mapError(err error) error {
 //
 // THE PATHS ARE ABSOLUTE (`/ext/playwright/api/...`) because a different process forwards exactly
 // those here — nothing strips a prefix.
-func uiMux(sc *sidecar.Client, b bus.Bus) http.Handler {
+func uiMux(sc *sidecar.Client, b bus.Bus, sidecarBase string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		// THE SIDECAR IS PART OF THIS PROCESS'S HEALTH. Reporting ok while the browser half is down
@@ -224,6 +226,21 @@ func uiMux(sc *sidecar.Client, b bus.Bus) http.Handler {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"contexts": list})
 	})
+
+	/**
+	 * THE REST OF THE PANEL'S API IS A PASS-THROUGH.
+	 *
+	 * The panel's Connect service lives in the sidecar — it needs the live contexts, which only that
+	 * process has — and it is reachable only on loopback. So the pod's published port forwards it,
+	 * which is also what keeps the panel SAME-ORIGIN with the console: the browser talks to one origin
+	 * and never learns that two processes are behind it.
+	 *
+	 * A plain ReverseProxy rather than hand-rolled copying: it handles streaming, trailers and the
+	 * header rules that a Connect server relies on, and reimplementing those is how a proxy works for
+	 * unary calls and hangs on streams.
+	 */
+	sidecarURL, _ := url.Parse(sidecarBase)
+	mux.Handle("/ext/playwright/api/", httputil.NewSingleHostReverseProxy(sidecarURL))
 
 	/**
 	 * `/file` IS THE ONE DIRECTION THE SIDECAR CANNOT DO ALONE.
