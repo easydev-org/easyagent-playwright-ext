@@ -99,13 +99,16 @@ jobs:
           done
           exit $fail
 
-      - name: e2e (real browser)
+      # THE LIVE SUITE NOW DRIVES ONLY THE SIDECAR. The old one started the extension with a NATS
+      # connection in-process, which is the half that moved to Go — so it was testing a protocol layer
+      # this repository no longer has. What remains worth proving here is that a REAL browser under the
+      # sidecar answers through /exec, which is the contract the Go shell depends on.
+      #
+      # The Go side's own integration (bus, manifest, permissions) belongs in its tests, not here.
+      - name: e2e (real browser, sidecar only)
         env:
-          E2E_NATS_URL: nats://127.0.0.1:4222
-          # The extension runs on the RUNNER (the test launches it in-process), so it reaches both
-          # services on their host ports. That is why compose PUBLISHES them rather than exposing.
           E2E_SELENIUM_URL: http://127.0.0.1:4444
-        run: npx vitest run tests/e2e-live.test.ts
+        run: npx vitest run tests/sidecar-live.test.ts
 
       - name: dump service logs on failure
         if: failure()
