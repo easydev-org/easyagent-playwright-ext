@@ -1,5 +1,5 @@
 id: playwright
-version: 0.3.3
+version: 0.7.0
 lifecycle: [deleted]
 
 # Tool metadata (description / schema / i18n) lives HERE; execute handlers
