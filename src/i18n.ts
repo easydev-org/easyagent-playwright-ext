@@ -1,3 +1,5 @@
+import type { PlaywrightDeps } from './deps.js'
+
 /**
  * A LOCAL catalogue lookup, because this process no longer links the SDK.
  *
@@ -32,10 +34,15 @@ function translate(
   return text
 }
 
-function defineI18n(catalog: Catalog): { t: typeof translate } {
+type Translate = (
+  locale: string,
+  key: string,
+  params?: Record<string, string | number>,
+) => string
+
+function defineI18n(catalog: Catalog): { t: Translate } {
   return { t: (locale, key, params) => translate(catalog, key, locale, params, BASE_LOCALE) }
 }
-import type { PlaywrightDeps } from './deps.js'
 
 /**
  * Playwright-extension message catalog for RUNTIME tool text (content + error)

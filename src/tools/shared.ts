@@ -4,7 +4,6 @@
 // Go package — copying four three-line coercions is what lets this process drop the bus dependency
 // entirely, and they are the kind of thing that is easier to read here than to import.
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
-import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
 import type { BrowserSession, ContextManager } from '../context-manager.js'
 import type { PlaywrightDeps } from '../deps.js'
 
@@ -48,7 +47,6 @@ export function strArray(args: Record<string, unknown>, key: string): string[] {
   return argStrArray(args, key)
 }
 // Keep the raw SDK readers importable for callers that prefer them.
-export { argBool, argFloat, argString }
 
 /**
  * Resolve an official `target` argument to a Playwright Locator. The snapshot
