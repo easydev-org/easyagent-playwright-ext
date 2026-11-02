@@ -1,9 +1,33 @@
-// Shared tool-layer primitives. Argument-coercion comes from the easybus SDK's
-// extension-kit; the locator/snapshot/log helpers are the extension's own.
-import { argBool, argFloat, argStrArray, argString } from '@easydev-org/easybus-sdk'
+// Shared tool-layer primitives.
+//
+// THE ARG READERS ARE LOCAL. They came from @easydev-org/easybus-sdk's extension kit, which is now a
+// Go package — copying four three-line coercions is what lets this process drop the bus dependency
+// entirely, and they are the kind of thing that is easier to read here than to import.
+import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core'
 import type { BrowserSession, ContextManager } from '../context-manager.js'
 import type { PlaywrightDeps } from '../deps.js'
+
+/** argString reads a string argument ('' when absent/wrong type). */
+export function argString(args: Record<string, unknown>, key: string): string {
+  const v = args[key]
+  return typeof v === 'string' ? v : ''
+}
+/** argBool reads a boolean argument (the default when absent/wrong type). */
+export function argBool(args: Record<string, unknown>, key: string, def: boolean): boolean {
+  const v = args[key]
+  return typeof v === 'boolean' ? v : def
+}
+/** argFloat reads a number argument (the default when absent/wrong type). */
+export function argFloat(args: Record<string, unknown>, key: string, def: number): number {
+  const v = args[key]
+  return typeof v === 'number' ? v : def
+}
+/** argStrArray reads a string[] argument ([] when absent/wrong type). */
+export function argStrArray(args: Record<string, unknown>, key: string): string[] {
+  const v = args[key]
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
 
 /** strArg reads a string argument ('' when absent/wrong type). */
 export function strArg(args: Record<string, unknown>, key: string): string {

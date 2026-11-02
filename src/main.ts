@@ -1,9 +1,22 @@
+/**
+ * The playwright sidecar: a browser driver behind one HTTP endpoint.
+ *
+ * IT NO LONGER SPEAKS THE BUS. The NATS connection, discovery, the manifest, permissions and config
+ * are a Go process's job now — see the header of sidecar.ts for why the seam fell exactly here.
+ *
+ * IT STILL SERVES THE PANEL'S DATA, because only this process knows the live contexts. The panel is
+ * same-origin with the console and its API is proxied here by easyagent-ext-ui-host, so the paths keep
+ * their absolute `/ext/playwright/api/...` shape.
+ */
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { servePlaywright } from './serve.js'
+import { connectNodeAdapter } from '@connectrpc/connect-node'
+import { ContextManager } from './context-manager.js'
+import { SeleniumBrowserFactory } from './selenium.js'
+import { CdpBrowserFactory } from './browser.js'
+import { startSidecar } from './sidecar.js'
 import { agentIdentity } from './ui/identity.js'
 import { uiService } from './ui/service.js'
-import { connectNodeAdapter } from '@connectrpc/connect-node'
 import { UiService } from './gen/ui/v1/ui_pb.js'
 
 /** Read a positive integer env var, or a default. */
@@ -23,7 +36,6 @@ function viewportEnv(): { width: number; height: number } | null {
 }
 
 async function main(): Promise<void> {
-  const natsUrl = process.env['NATS_URL'] ?? 'nats://127.0.0.1:4222'
   const seleniumUrl = process.env['PLAYWRIGHT_SELENIUM_URL'] ?? ''
   const cdpEndpoint = process.env['PLAYWRIGHT_CDP_ENDPOINT'] ?? ''
   if (seleniumUrl === '' && cdpEndpoint === '') {
@@ -31,75 +43,95 @@ async function main(): Promise<void> {
       'one of PLAYWRIGHT_SELENIUM_URL (Selenium/standalone-chrome base URL) or PLAYWRIGHT_CDP_ENDPOINT (raw CDP endpoint) is required',
     )
   }
-  const target: import('./index.js').BrowserTarget =
-    seleniumUrl !== ''
-      ? {
-          kind: 'selenium',
-          baseUrl: seleniumUrl,
-          browserName: process.env['PLAYWRIGHT_BROWSER'] ?? 'chrome',
-          cdpTimeoutMs: intEnv('PLAYWRIGHT_CDP_TIMEOUT_MS', 30_000),
-        }
-      : { kind: 'cdp', endpoint: cdpEndpoint }
 
-  const { stop, manager } = await servePlaywright({
-    natsUrl,
-    extension: {
-      target,
-      viewport: viewportEnv(),
-      ignoreHttpsErrors:
-        process.env['PLAYWRIGHT_IGNORE_HTTPS_ERRORS'] !== 'false',
-      idleTimeoutMs: intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000),
-      maxContexts: intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8),
-      defaultTimeoutMs: intEnv('PLAYWRIGHT_ACTION_TIMEOUT_MS', 30_000),
+  const viewport = viewportEnv()
+  const ignoreHttpsErrors = process.env['PLAYWRIGHT_IGNORE_HTTPS_ERRORS'] !== 'false'
+  const browserName = process.env['PLAYWRIGHT_BROWSER'] ?? 'chrome'
+  const cdpTimeoutMs = intEnv('PLAYWRIGHT_CDP_TIMEOUT_MS', 30_000)
+
+  // ONE FACTORY, CHOSEN ONCE. A context created against Selenium must be closed against the same
+  // driver, which is why the factory owns both halves and the manager only stores the release func.
+  const factory =
+    seleniumUrl !== ''
+      ? new SeleniumBrowserFactory({
+          baseUrl: seleniumUrl,
+          browserName,
+          cdpTimeoutMs,
+          viewport,
+          ignoreHttpsErrors,
+        })
+      : new CdpBrowserFactory({ endpoint: cdpEndpoint, viewport, ignoreHttpsErrors })
+
+  const manager = new ContextManager({
+    maxContexts: intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8),
+    idleTimeoutMs: intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000),
+    createBrowser: async () => {
+      if (factory instanceof SeleniumBrowserFactory) {
+        const s = await factory.create()
+        return {
+          browser: s.browser,
+          context: s.page.context(),
+          page: s.page,
+          driverSessionId: s.sessionId,
+          releaseDriver: () => factory.deleteSession(s.sessionId).catch(() => {}),
+        }
+      }
+      const { browser, page } = await factory.create()
+      return { browser, context: page.context(), page, driverSessionId: null }
     },
+    destroyBrowser: async s => {
+      if (s.releaseDriver !== undefined) {
+        // The WebDriver session owns the browser; deleting it closes the context and frees the Grid
+        // slot. Disconnect CDP after, so a failed delete cannot leave the socket open.
+        await s.releaseDriver()
+        await s.browser.close().catch(() => {})
+      } else {
+        await s.page.context().close().catch(() => {})
+      }
+    },
+    onError: () => {},
+  })
+  // The idle reaper is what stops a forgotten context from holding a Grid slot forever. Starting it
+  // is not optional: without it PLAYWRIGHT_IDLE_TIMEOUT_MS is a number nothing reads.
+  manager.start()
+
+  /**
+   * WHERE file:<code> BYTES COME FROM.
+   *
+   * The blob backend is Go's, so this asks the sibling process. AGENT_URL points at the Go shell,
+   * which exposes a single internal endpoint for exactly this — not the agent's public API, because
+   * the sidecar has no tenant credential and must not be given one.
+   */
+  const shellURL = process.env['SHELL_URL'] ?? ''
+  const fetchFile =
+    shellURL === ''
+      ? undefined
+      : async (code: string, tenant: string) => {
+          const res = await fetch(`${shellURL}/file?code=${encodeURIComponent(code)}&tenant=${encodeURIComponent(tenant)}`)
+          if (!res.ok) throw new Error(`file ${code}: HTTP ${res.status}`)
+          const body = (await res.json()) as { bytes: string; name: string; mime: string }
+          return { data: Buffer.from(body.bytes, 'base64'), name: body.name, mime: body.mime }
+        }
+
+  const sidecar = startSidecar({
+    manager,
+    defaultTimeoutMs: intEnv('PLAYWRIGHT_ACTION_TIMEOUT_MS', 30_000),
+    ...(fetchFile !== undefined ? { fetchFile } : {}),
   })
 
   console.log(
-    `[playwright] serving over ${natsUrl} -> ${
-      seleniumUrl !== '' ? `selenium ${seleniumUrl}` : `cdp ${cdpEndpoint}`
-    } (idle=${intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000)}ms, max=${intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8)})`,
+    `[playwright] browser -> ${seleniumUrl !== '' ? `selenium ${seleniumUrl}` : `cdp ${cdpEndpoint}`}` +
+      ` (idle=${intEnv('PLAYWRIGHT_IDLE_TIMEOUT_MS', 600_000)}ms, max=${intEnv('PLAYWRIGHT_MAX_CONTEXTS', 8)})`,
   )
 
-  // HTTP surface: Kubernetes probes, plus the browser panel's data API.
-  //
-  // THE PANEL'S FILES ARE NOT SERVED HERE ANY MORE. They are
-  // easydev-org/easyagent-playwright-ext-ui, installed and served by easyagent-ext-ui-host — so this
-  // binary carries no assets and this file has no UI directory to mount.
-  //
-  // WHAT STAYS IS THE DATA. `/ext/playwright/api/contexts` and the per-context frame endpoint are this
-  // extension's own API: they read the live browser contexts, which only this process knows about.
-  // The host forwards exactly those paths here; the panel itself never reaches this server.
+  // ── the panel's HTTP surface ────────────────────────────────────────────────
   const port = intEnv('PORT', 8080)
-
-  /** Probes and the extension's own API. */
-  const api = (req: IncomingMessage, res: ServerResponse): void => {
-    res.setHeader('content-type', 'application/json')
-    if (req.url === '/api/v1/health') {
-      res.end(JSON.stringify({ ok: true, id: 'playwright' }))
-      return
-    }
-    res.statusCode = 404
-    res.end('{}')
-  }
-
   const agentURL = process.env['AGENT_URL'] ?? ''
-  /**
-   * THE PANEL'S API, AS A CONNECT SERVICE.
-   *
-   * The tenant is resolved from the caller's bearer inside the service, so wiring it unconditionally is
-   * right: without an identity source it refuses every call, which is the same answer as not being
-   * configured — and one the caller can act on.
-   */
+
   const panel = connectNodeAdapter({
     routes: router => router.service(UiService, uiService({ contexts: manager, identity: agentIdentity({ agentURL }) })),
   })
 
-  /**
-   * Routes one request.
-   *
-   * `/ext/playwright/api/` is the panel's surface and reaches Connect; everything else is the probes.
-   * Connect decides which PATH inside that prefix is an RPC, so this file does not enumerate them.
-   */
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const p = (req.url ?? '/').split('?')[0] ?? '/'
     if (p.startsWith('/ext/playwright/api/')) {
@@ -109,16 +141,21 @@ async function main(): Promise<void> {
         res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
         return
       }
-      // THE PATH THE PANEL CALLS IS /ext/playwright/api/ui.v1.UiService/...; Connect mounts procedures
-      // at their own absolute path, so the prefix is stripped here rather than duplicated in every
-      // generated client.
+      // Connect mounts procedures at their absolute path, so the panel's prefix is stripped here
+      // rather than duplicated in every generated client.
       const raw = req.url ?? ''
       const query = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
       req.url = p.slice('/ext/playwright/api'.length) + query
       panel(req, res)
       return
     }
-    api(req, res)
+    res.setHeader('content-type', 'application/json')
+    if (p === '/api/v1/health' || p === '/healthz') {
+      res.end(JSON.stringify({ ok: true, id: 'playwright' }))
+      return
+    }
+    res.statusCode = 404
+    res.end('{}')
   }
 
   const http = createServer(handler)
@@ -126,7 +163,7 @@ async function main(): Promise<void> {
 
   const shutdown = (): void => {
     http.close()
-    void stop().finally(() => process.exit(0))
+    void sidecar.close().finally(() => process.exit(0))
     setTimeout(() => process.exit(0), 5000).unref()
   }
   process.on('SIGINT', shutdown)

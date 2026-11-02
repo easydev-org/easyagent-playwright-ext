@@ -1,4 +1,40 @@
-import { BASE_LOCALE, type Catalog, defineI18n } from '@easydev-org/easybus-sdk'
+/**
+ * A LOCAL catalogue lookup, because this process no longer links the SDK.
+ *
+ * It was `defineI18n` from @easydev-org/easybus-sdk — the same three lines of "find the locale's
+ * string, else the base locale, then substitute {placeholders}". Copying them here is what lets the
+ * sdk drop out of this package entirely; the alternative was keeping a bus dependency for a string
+ * table.
+ */
+
+/** The locale every lookup falls back to. */
+const BASE_LOCALE = 'en'
+
+interface Catalog {
+  [key: string]: Record<string, string>
+}
+
+function translate(
+  catalog: Catalog,
+  key: string,
+  locale: string,
+  params: Record<string, string | number> | undefined,
+  fallback: string,
+): string {
+  const row = catalog[key]
+  // A MISSING KEY IS A BUG IN THIS FILE, not a runtime condition: return the key so it is visible in
+  // the transcript rather than a blank string nobody can trace.
+  if (row === undefined) return key
+  let text = row[locale] ?? row[fallback] ?? Object.values(row)[0] ?? key
+  for (const [k, v] of Object.entries(params ?? {})) {
+    text = text.split(`{${k}}`).join(String(v))
+  }
+  return text
+}
+
+function defineI18n(catalog: Catalog): { t: typeof translate } {
+  return { t: (locale, key, params) => translate(catalog, key, locale, params, BASE_LOCALE) }
+}
 import type { PlaywrightDeps } from './deps.js'
 
 /**
