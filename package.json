@@ -1,6 +1,6 @@
 {
   "name": "@easyagent/playwright-ext",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Playwright browser sidecar for easyagent: CDP browser automation behind one HTTP endpoint. The easybus protocol lives in the Go shell.",
   "type": "module",
   "main": "./src/main.ts",
