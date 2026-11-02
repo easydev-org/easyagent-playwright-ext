@@ -6,14 +6,33 @@ on:
   pull_request:
   workflow_dispatch:
 
-# packages: read — the SDK is installed from GitHub Packages, and GITHUB_TOKEN cannot read it
-# without this scope. Explicit rather than inherited, because the default is read-only on
-# contents and nothing else, which surfaces as a confusing 401 from npm.
+# contents only. The easybus SDK used to come from GitHub Packages, which needed
+# `packages: read`; the protocol moved to Go and its module comes from the public proxy, so nothing
+# here reads a private package any more.
 permissions:
   contents: read
-  packages: read
 
 jobs:
+  # THE GO HALF IS A SEPARATE JOB, and it must stay separate: a broken shell and a broken sidecar
+  # should fail with different job names, or the reader has to open the log to find out which half of
+  # a two-process image is wrong.
+  goshell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          out="$(gofmt -l . )"
+          if [ -n "$out" ]; then echo "::error::gofmt needed:"; echo "$out"; exit 1; fi
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -31,10 +50,7 @@ jobs:
       - run: npm install --no-audit --no-fund
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-          # The SDK comes from GitHub Packages, which authenticates even for a read. The token
-          # is supplied here rather than committed to .npmrc: an earlier attempt committed one
-          # and GitHub's secret scanning revoked it, breaking every later install.
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npm test
@@ -60,7 +76,6 @@ jobs:
       - run: npm install --no-audit --no-fund
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # `--wait` waits for every healthcheck, which is what makes the next step meaningful: the
       # browser node answers "ready":true only once it can accept a session, so a fast start cannot
