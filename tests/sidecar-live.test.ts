@@ -115,8 +115,10 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
 
     // `target: "eN"` resolves through the aria-ref engine, which only exists in a browser context
     // that produced that snapshot — the part a fake manager cannot exercise.
+    // THE BARE REF, NOT ITS DECORATION. `resolveLocator` treats a ref-shaped value as an aria-ref and
+    // anything else as a CSS selector, so passing "[ref=f1e3]" would be searched for literally.
     const clicked = contentOf(
-      await exec({ tool: 'browser-click', context_id: ctx, args: { target: `[ref=${ref}]` } }),
+      await exec({ tool: 'browser-click', context_id: ctx, args: { target: ref } }),
     )
     expect(clicked.length).toBeGreaterThan(0)
   }, 120_000)
@@ -138,7 +140,10 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
     // BYTES, NOT `data`: this is the one place the seam changes shape, because the Go side turns them
     // into a `file:<code>` and it is the only side with a blob backend.
     expect(result.file).toBeDefined()
-    expect(result.file?.mime).toMatch(/^image\//)
+    // THE MIME IS DELIBERATELY EMPTY: the agent sniffs it from the bytes, which is what it does for
+    // every generated file. Asserting image/ here would test a guess this side should not make.
+    expect(result.file?.mime).toBe('')
+    expect(result.file?.name).toMatch(/\.png$/)
     // A real PNG is not empty and decodes to bytes starting with the PNG signature.
     const bytes = Buffer.from(result.file?.bytes ?? '', 'base64')
     expect(bytes.length).toBeGreaterThan(100)
