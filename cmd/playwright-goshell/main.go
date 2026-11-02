@@ -25,11 +25,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	easybus "github.com/easydev-org/easybus-sdk"
+	"github.com/easydev-org/easybus-sdk/bus"
 	"github.com/easydev-org/easybus-sdk/extension"
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
@@ -103,10 +102,11 @@ func main() {
 	// ONE HANDLER PER TOOL, ALL THE SAME SHAPE. The sidecar decides what each does; this side
 	// contributes the context id, the tenant and the session — the three things the sidecar cannot
 	// know because it has no identity of its own.
-	handlers := make(map[string]extension.ToolHandler, len(m.Tools))
+	// The SDK binds an inline function per tool; there is no named handler type to key on.
+	handlers := make(map[string]extension.ToolSpec, len(m.Tools))
 	for _, t := range m.Tools {
 		name := t.Name
-		handlers[name] = func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
+		handlers[name] = extension.ToolSpec{Execute: func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
 			// The context id rides as an ARGUMENT in the manifest, and the sidecar wants it as its
 			// own field: one tool family is addressed by it, and passing it twice would let the two
 			// disagree.
@@ -120,7 +120,7 @@ func main() {
 
 			// BYTES BECOME A file:<code> HERE, because this is the only side of the seam with a bus.
 			if res.File != nil {
-				code, perr := ing.Put(ctx, tenant, res.File.Name, res.File.Bytes)
+				code, perr := ing.Put(ctx, tenant, session, res.File.Name, res.File.Bytes)
 				if perr != nil {
 					return extension.ToolResultData{}, &extension.TypedError{
 						Code:    easybus.ToolResultErrorCodeInternal,
@@ -133,16 +133,11 @@ func main() {
 				}, nil
 			}
 			return extension.ToolResultData{Content: res.Content, Data: res.Data}, nil
-		}
-	}
-
-	specs := make(map[string]extension.ToolSpec, len(handlers))
-	for name, h := range handlers {
-		specs[name] = extension.ToolSpec{Execute: h}
+		}},
 	}
 
 	cfg := m.BuildConfig(manifest.Bindings{
-		Handlers: specs,
+		Handlers: handlers,
 		OnLifecycle: func(ctx context.Context, ev *easybus.LifecycleEvent, tenant string) error {
 			// A deleted session must not leave browser contexts holding Grid slots, and only this
 			// process can tell the sidecar which session is gone.
@@ -231,4 +226,3 @@ func uiMux(sc *sidecar.Client) http.Handler {
 	return mux
 }
 
-var _ = signal.Notify
