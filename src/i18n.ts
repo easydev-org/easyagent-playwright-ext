@@ -16,6 +16,18 @@ interface Catalog {
   [key: string]: Record<string, string>
 }
 
+/**
+ * The language subtag: `zh-CN` -> `zh`, `en-GB` -> `en`.
+ *
+ * A REGION-QUALIFIED TAG MUST FIND ITS LANGUAGE'S STRING. Without this `zh-CN` falls through to the
+ * fallback and a Chinese reader gets English — which is not a crash, so nothing reports it, and it
+ * stays wrong until somebody reads the transcript in the wrong language.
+ */
+function baseLang(locale: string): string {
+  const i = locale.indexOf('-')
+  return i > 0 ? locale.slice(0, i) : locale
+}
+
 function translate(
   catalog: Catalog,
   key: string,
@@ -27,11 +39,22 @@ function translate(
   // A MISSING KEY IS A BUG IN THIS FILE, not a runtime condition: return the key so it is visible in
   // the transcript rather than a blank string nobody can trace.
   if (row === undefined) return key
-  let text = row[locale] ?? row[fallback] ?? Object.values(row)[0] ?? key
-  for (const [k, v] of Object.entries(params ?? {})) {
-    text = text.split(`{${k}}`).join(String(v))
+  // EXACT TAG FIRST, THEN ITS LANGUAGE, THEN THE FALLBACK — the same order the SDK used, so a
+  // `zh-CN` session and a `zh` session read the same string.
+  for (const cand of [locale, baseLang(locale), fallback, baseLang(fallback)]) {
+    const tpl = row[cand]
+    if (tpl !== undefined) return interpolate(tpl, params)
   }
-  return text
+  const any = Object.values(row)[0]
+  return any !== undefined ? interpolate(any, params) : key
+}
+
+function interpolate(text: string, params: Record<string, string | number> | undefined): string {
+  let out = text
+  for (const [k, v] of Object.entries(params ?? {})) {
+    out = out.split(`{${k}}`).join(String(v))
+  }
+  return out
 }
 
 type Translate = (
