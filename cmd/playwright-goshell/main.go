@@ -133,7 +133,7 @@ func main() {
 				}, nil
 			}
 			return extension.ToolResultData{Content: res.Content, Data: res.Data}, nil
-		}},
+		}}
 	}
 
 	cfg := m.BuildConfig(manifest.Bindings{
@@ -225,4 +225,3 @@ func uiMux(sc *sidecar.Client) http.Handler {
 	})
 	return mux
 }
-
