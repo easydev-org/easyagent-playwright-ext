@@ -89,16 +89,27 @@ export interface SidecarOptions {
 /**
  * A sidecar-local deps implementation.
  *
- * `ingestFile` DOES NOT UPLOAD. Bytes produced here travel out in the RESULT and Go stores them; this
- * returns a placeholder so a handler that wants a name still gets one. That split is what keeps the
- * blob backend in one place — a second uploader here would mean two components writing files with
- * two notions of when they expire.
+ * `ingestFile` CAPTURES, IT DOES NOT UPLOAD. The tools call it themselves — `browser-take-screenshot`
+ * does `deps.ingestFile(buf)` and returns a `data.files` list — so the bytes have to be caught here
+ * and returned by the endpoint; a stub returning only a name made the result claim a `file:<code>`
+ * that Go had never seen and could not open.
+ *
+ * The capture is per-call (see `collected` in the runner), not per-deps, because one deps object is
+ * built once for the process while the bytes belong to one request.
  *
  * `getFile` DOES call back, because reading is the direction this process cannot do alone.
  */
-function sidecarDeps(fetchFile: SidecarOptions['fetchFile']): PlaywrightDeps {
+function sidecarDeps(
+  fetchFile: SidecarOptions['fetchFile'],
+  collected: Array<{ name: string; data: Uint8Array }>,
+): PlaywrightDeps {
   return {
-    ingestFile: async ({ name }) => ({ code: name, mime: 'application/octet-stream' }),
+    ingestFile: async ({ name, data }) => {
+      // The MIME is left to the agent, which sniffs the bytes; guessing here would let the two
+      // disagree about the same file.
+      collected.push({ name, data })
+      return { code: name, mime: '' }
+    },
     getFile: async (code, tenant) => {
       if (fetchFile === undefined) {
         throw new Error(`cannot fetch ${code}: this sidecar has no file backend wired`)
@@ -114,9 +125,10 @@ function sidecarDeps(fetchFile: SidecarOptions['fetchFile']): PlaywrightDeps {
 /**
  * Tools whose result is BYTES rather than text.
  *
- * A SET, NOT A CONVENTION: these handlers return `data` carrying base64 in a shape only they produce,
- * so the conversion has to be named somewhere or it would be re-derived by whoever reads the result.
- * Keeping it here means Go learns one rule — "if the result has bytes, ingest them" — instead of five.
+ * A SET, NOT A CONVENTION: the handlers below call `deps.ingestFile` themselves and hand back a
+ * `data.files` list, so the bytes never appear in the result — they are captured by the deps
+ * implementation and collected after the call. Naming the tools here is what lets this process return
+ * the bytes instead of a `file:<code>` it cannot mint.
  */
 const FILE_TOOLS = new Set([
   'browser-take-screenshot',
@@ -135,9 +147,6 @@ const ROUTED_TOOLS = new Set(['browser-create-context', 'browser-close-context']
 export function startSidecar(opts: SidecarOptions): { close: () => Promise<void> } {
   const tools = pwTools()
 
-  // The deps exist so tools that produce or consume files have somewhere to go. Producing stays local
-  // (the bytes ride out in the result); consuming calls back to Go, which owns the blob backend.
-  const deps = sidecarDeps(opts.fetchFile)
 
   const run = async (req: ExecRequest): Promise<ExecResponse> => {
     const tool = req.tool
@@ -167,6 +176,11 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
       return { ok: false, code: 'not_found', error: `no such tool: ${tool}` }
     }
 
+    // PER-CALL, because the captured bytes belong to this request and not to the process. A shared
+    // collector would attach one call's screenshot to whichever result was serialised next.
+    const collected: Array<{ name: string; data: Uint8Array }> = []
+    const deps = sidecarDeps(opts.fetchFile, collected)
+
     try {
       const out = await opts.manager.withContext(
         contextId,
@@ -188,10 +202,24 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
       )
 
       const result: SidecarResult = { content: out.content }
-      if (out.data !== undefined) {
-        const asFile = FILE_TOOLS.has(tool) ? fileFrom(out.data) : null
-        if (asFile !== null) result.file = asFile
-        else result.data = out.data
+      // A TOOL THAT PRODUCED BYTES RETURNS THEM INSTEAD OF ITS `data`. The `data.files` list names
+      // codes this process cannot mint — Go mints them — so forwarding it would tell the model about
+      // a file that does not exist.
+      if (collected.length > 0) {
+        const first = collected[0]!
+        result.file = {
+          name: first.name,
+          bytes: Buffer.from(first.data).toString('base64'),
+          // Left empty so the agent sniffs the real type from the bytes, which is what it does for
+          // every other generated file.
+          mime: '',
+        }
+        // Extra files (a multi-file tool) are named rather than dropped silently.
+        if (collected.length > 1) {
+          result.data = { additionalFiles: collected.slice(1).map(f => f.name) }
+        }
+      } else if (out.data !== undefined) {
+        result.data = out.data
       }
       return { ok: true, result, context_id: contextId }
     } catch (e) {
@@ -237,34 +265,6 @@ function logsFor(session: BrowserSession): ReturnType<typeof newContextLogs> {
     wirePageLogging(session.page, holder.logs)
   }
   return holder.logs
-}
-
-/**
- * Turn a tool's `data` into bytes for Go.
- *
- * THE SHAPES DIFFER BY TOOL and that is why this is one function with a switch rather than a
- * convention: a screenshot returns a Buffer under `data`, a PDF returns one under `pdf`, and
- * storage-state returns a JSON document. Guessing wrong would send an empty file and the model would
- * receive a `file:<code>` that opens to nothing.
- */
-function fileFrom(data: unknown): SidecarResult['file'] | null {
-  if (data === null || data === undefined) return null
-  const d = data as Record<string, unknown>
-
-  for (const key of ['bytes', 'pdf', 'data', 'buffer'] as const) {
-    const v = d[key]
-    if (typeof v === 'string' && v !== '') {
-      return { name: String(d['name'] ?? 'file'), bytes: v, mime: String(d['mime'] ?? 'application/octet-stream') }
-    }
-    if (v instanceof Uint8Array) {
-      return {
-        name: String(d['name'] ?? 'file'),
-        bytes: Buffer.from(v).toString('base64'),
-        mime: String(d['mime'] ?? 'application/octet-stream'),
-      }
-    }
-  }
-  return null
 }
 
 async function handle(

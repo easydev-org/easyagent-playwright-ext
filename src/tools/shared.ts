@@ -49,19 +49,26 @@ export function strArray(args: Record<string, unknown>, key: string): string[] {
 // Keep the raw SDK readers importable for callers that prefer them.
 
 /**
- * Resolve an official `target` argument to a Playwright Locator. The snapshot
- * emits `[ref=eN]` markers (via `page.ariaSnapshot({mode:'ai'})`), and the
- * `aria-ref` engine resolves them against that last AI snapshot; anything else
- * is treated as a normal Playwright selector.
+ * Resolve an official `target` argument to a Playwright Locator. The snapshot emits `[ref=…]`
+ * markers (via `page.ariaSnapshot({mode:'ai'})`), and the `aria-ref` engine resolves them against
+ * that last AI snapshot; anything else is treated as a normal Playwright selector.
+ *
+ * THE MARKER IS NOT ALWAYS `eN`. On a page with frames Playwright prefixes the frame, so the same
+ * button reads `[ref=f1e3]` — and a matcher that only accepted `e12` treated `f1e3` as a CSS
+ * selector, which fails with "no element matches f1e3". Measured against selenium/standalone-chrome
+ * 4.49: every snapshot on a page with any frame produced prefixed refs, so this was the common case,
+ * not an edge one.
+ *
+ * The shape is `<frame-prefix>e<number>`, where the prefix is absent on the main frame only.
  */
 export function resolveLocator(page: Page, target: string): Locator {
   const t = target.trim()
-  if (/^e\d+$/.test(t)) return page.locator(`aria-ref=${t}`)
+  if (/^[a-z]\d*e\d+$/.test(t) || /^e\d+$/.test(t)) return page.locator(`aria-ref=${t}`)
   return page.locator(t)
 }
 
 /**
- * Capture the page accessibility snapshot in AI mode (elements carry `[ref=eN]`
+ * Capture the page accessibility snapshot in AI mode (elements carry `[ref=…]`
  * so a later `target: "eN"` resolves). This also seeds the `aria-ref` engine.
  */
 export async function captureSnapshot(

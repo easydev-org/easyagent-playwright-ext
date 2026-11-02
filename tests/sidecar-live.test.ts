@@ -107,8 +107,11 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
     // THE PROPERTY THE WHOLE SPLIT WAS AT RISK OF LOSING: `ariaSnapshot({mode:'ai'})` emits refs.
     // Without a ref there is no way to address an element, so every interaction tool breaks — and it
     // would break silently, as "click did nothing".
-    const ref = /\[ref=(e\d+)\]/.exec(snap)?.[1]
-    expect(ref, `snapshot had no [ref=eN] marker:\n${snap}`).toBeDefined()
+    // THE PREFIX IS PART OF THE MARKER. A page with any frame gets `[ref=f1e3]`, so a matcher that
+    // only accepted `e3` would find nothing — and `target` would then be treated as a CSS selector,
+    // failing as "no element matches f1e3".
+    const ref = /\[ref=([a-z]\d*e\d+)\]/.exec(snap)?.[1]
+    expect(ref, `snapshot had no [ref=…] marker:\n${snap}`).toBeDefined()
 
     // `target: "eN"` resolves through the aria-ref engine, which only exists in a browser context
     // that produced that snapshot — the part a fake manager cannot exercise.
