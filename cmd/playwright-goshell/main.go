@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,7 +155,7 @@ func main() {
 
 	if err := extension.Serve(ext, extension.ServeOptions{
 		// NO UI SPEC. The panel is easyagent-ext-ui-host's to serve; this binary is a backend.
-		Handler: uiMux(sc),
+		Handler: uiMux(sc, bus),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("serving", "nats", envOr("NATS_URL", ""), "sidecar", envOr("SIDECAR_URL", ""))
 		},
@@ -197,7 +198,7 @@ func mapError(err error) error {
 //
 // THE PATHS ARE ABSOLUTE (`/ext/playwright/api/...`) because a different process forwards exactly
 // those here — nothing strips a prefix.
-func uiMux(sc *sidecar.Client) http.Handler {
+func uiMux(sc *sidecar.Client, b bus.Bus) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		// THE SIDECAR IS PART OF THIS PROCESS'S HEALTH. Reporting ok while the browser half is down
@@ -222,6 +223,37 @@ func uiMux(sc *sidecar.Client) http.Handler {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"contexts": list})
+	})
+
+	/**
+	 * `/file` IS THE ONE DIRECTION THE SIDECAR CANNOT DO ALONE.
+	 *
+	 * `browser-file-upload` and `browser-drop` are given a `file:<code>` and must put its bytes into
+	 * the page. Only this process has the bus to fetch them, so the sidecar calls back here.
+	 *
+	 * IT IS BOUND TO THE POD, NOT PUBLISHED: the Service exposes 8080, and this handler is reachable
+	 * only from the sibling container on loopback. That is why it can take a tenant from a query
+	 * parameter — there is no untrusted caller to spoof it.
+	 */
+	mux.HandleFunc("/file", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		tenant := r.URL.Query().Get("tenant")
+		if code == "" || tenant == "" {
+			http.Error(w, "code and tenant are required", http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		meta, data, err := extension.GetFileViaAgent(ctx, b, tenant, code)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"bytes": base64.StdEncoding.EncodeToString(data),
+			"name":  meta.Name,
+			"mime":  meta.Mime,
+		})
 	})
 	return mux
 }
