@@ -27,11 +27,21 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
+      # GOFMT, BEFORE THE BUILD. A formatting problem is not a build failure, so it needs its own
+      # step: otherwise the compiler accepts the file and the only signal is a diff nobody looks at.
+      #
+      # `-l` NAMES THE FILES AND EXITS 0, so the test is on its OUTPUT. Running `gofmt -l` alone would
+      # pass forever; that mistake is common enough to be worth this comment.
       - name: gofmt
         run: |
           set -euo pipefail
-          out="$(gofmt -l . )"
-          if [ -n "$out" ]; then echo "::error::gofmt needed:"; echo "$out"; exit 1; fi
+          out="$(gofmt -l . | grep -v '^vendor/' || true)"
+          if [ -n "$out" ]; then
+            echo "::error::these files are not gofmt-formatted. Run: gofmt -w \$(echo \"$out\")"
+            echo "$out"
+            exit 1
+          fi
+          echo "gofmt: clean"
 
   test:
     runs-on: ubuntu-latest
