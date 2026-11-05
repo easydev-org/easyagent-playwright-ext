@@ -109,34 +109,38 @@ func main() {
 	handlers := make(map[string]extension.ToolSpec, len(m.Tools))
 	for _, t := range m.Tools {
 		name := t.Name
-		handlers[name] = extension.ToolSpec{Execute: func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
-			// The context id rides as an ARGUMENT in the manifest, and the sidecar wants it as its
-			// own field: one tool family is addressed by it, and passing it twice would let the two
-			// disagree.
-			contextID, _ := args["context_id"].(string)
-			delete(args, "context_id")
+		handlers[name] = extension.ToolSpec{
+			// THE EFFECT RIDES WITH THE DECLARATION the loop is already reading: this file has no second
+			// table of tool metadata, and the manifest is the one the agent validates.
+			Effect: t.Effect,
+			Execute: func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
+				// The context id rides as an ARGUMENT in the manifest, and the sidecar wants it as its
+				// own field: one tool family is addressed by it, and passing it twice would let the two
+				// disagree.
+				contextID, _ := args["context_id"].(string)
+				delete(args, "context_id")
 
-			res, err := sc.Exec(ctx, tenant, session, contextID, name, args)
-			if err != nil {
-				return extension.ToolResultData{}, mapError(err)
-			}
-
-			// BYTES BECOME A file:<code> HERE, because this is the only side of the seam with a bus.
-			if res.File != nil {
-				code, perr := ing.Put(ctx, tenant, session, res.File.Name, res.File.Bytes)
-				if perr != nil {
-					return extension.ToolResultData{}, &extension.TypedError{
-						Code:    easybus.ToolResultErrorCodeInternal,
-						Message: "store " + res.File.Name + ": " + perr.Error(),
-					}
+				res, err := sc.Exec(ctx, tenant, session, contextID, name, args)
+				if err != nil {
+					return extension.ToolResultData{}, mapError(err)
 				}
-				return extension.ToolResultData{
-					Content: res.Content + "\nfile:" + code,
-					Data:    map[string]any{"file": "file:" + code, "mime": res.File.Mime, "name": res.File.Name},
-				}, nil
-			}
-			return extension.ToolResultData{Content: res.Content, Data: res.Data}, nil
-		}}
+
+				// BYTES BECOME A file:<code> HERE, because this is the only side of the seam with a bus.
+				if res.File != nil {
+					code, perr := ing.Put(ctx, tenant, session, res.File.Name, res.File.Bytes)
+					if perr != nil {
+						return extension.ToolResultData{}, &extension.TypedError{
+							Code:    easybus.ToolResultErrorCodeInternal,
+							Message: "store " + res.File.Name + ": " + perr.Error(),
+						}
+					}
+					return extension.ToolResultData{
+						Content: res.Content + "\nfile:" + code,
+						Data:    map[string]any{"file": "file:" + code, "mime": res.File.Mime, "name": res.File.Name},
+					}, nil
+				}
+				return extension.ToolResultData{Content: res.Content, Data: res.Data}, nil
+			}}
 	}
 
 	cfg := m.BuildConfig(manifest.Bindings{
