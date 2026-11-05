@@ -2,7 +2,7 @@ module github.com/easydev-org/easyagent-playwright-ext
 
 go 1.26.0
 
-require github.com/easydev-org/easybus-sdk v0.13.1
+require github.com/easydev-org/easybus-sdk v0.18.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.0 // indirect

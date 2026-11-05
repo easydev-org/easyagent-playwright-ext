@@ -9,6 +9,8 @@ lifecycle: [deleted]
 
 tools:
   - name: browser-create-context
+    # opens a browser context; nothing existing changes
+    effect: low
     description: >-
       Create a new browser context and return its context_id. Every other browser
       tool requires this context_id, and the context (cookies, storage, tabs)
@@ -25,6 +27,8 @@ tools:
     required_config: [selenium-url]
 
   - name: browser-close-context
+    # closes a context: its tabs, cookies and unsaved state are gone
+    effect: low
     description: >-
       Close a browser context (or all of them). Pass context_id to close one
       context; pass all=true to close every context of this session. Closing a
@@ -54,6 +58,8 @@ tools:
     required_config: [selenium-url]
 
   - name: browser-navigate
+    # loads a URL; a GET can have side effects on the site, so not `none`, but nothing is submitted
+    effect: low
     description: >-
       Navigate to a URL
     descriptions:
@@ -79,9 +85,11 @@ tools:
               要导航到的 URL。
       required: [context_id, url]
     required_config: [selenium-url]
-    requires: [browser.read]
+    requires: [browser.drive]
 
   - name: browser-navigate-back
+    # same reach as forward navigation
+    effect: low
     description: >-
       Go back to the previous page in the history
     descriptions:
@@ -100,9 +108,11 @@ tools:
               由 browser-create-context 返回的浏览器上下文键。必填：浏览器会话为显式创建并在多次调用间复用。
       required: [context_id]
     required_config: [selenium-url]
-    requires: [browser.read]
+    requires: [browser.drive]
 
   - name: browser-snapshot
+    # reads the page structure
+    effect: low
     description: >-
       Capture accessibility snapshot of the current page, this is better than
       screenshot
@@ -147,6 +157,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-find
+    # searches the snapshot
+    effect: low
     description: >-
       Search the accessibility snapshot of the current page for text or a regular
       expression. Returns matching snapshot lines.
@@ -183,6 +195,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-wait-for
+    # waits; changes nothing
+    effect: low
     description: >-
       Wait for text to appear or disappear or a specified time to pass
     descriptions:
@@ -225,6 +239,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-resize
+    # changes the viewport only; reads nothing and writes nothing
+    effect: low
     description: >-
       Resize browser window
     descriptions:
@@ -260,6 +276,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-tabs
+    # reads the tab list
+    effect: low
     description: >-
       List, create, close, or select a browser tab.
     descriptions:
@@ -298,6 +316,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-click
+    # a click is the page's decision, not ours: it can submit, delete or pay
+    effect: low
     description: >-
       Perform click on a web page
     descriptions:
@@ -357,6 +377,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-type
+    # typing into whatever has focus can submit a form
+    effect: low
     description: >-
       Type text into editable element
     descriptions:
@@ -414,6 +436,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-hover
+    # hovering can open menus that act
+    effect: low
     description: >-
       Hover over element on page
     descriptions:
@@ -450,6 +474,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-select-option
+    # choosing an option can change a stored preference
+    effect: low
     description: >-
       Select an option in a dropdown
     descriptions:
@@ -495,6 +521,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-press-key
+    # a keypress reaches whatever has focus
+    effect: low
     description: >-
       Press a key on the keyboard
     descriptions:
@@ -523,6 +551,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-drag
+    # drag and drop is an arbitrary pointer action
+    effect: low
     description: >-
       Perform drag and drop between two elements
     descriptions:
@@ -564,6 +594,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-fill-form
+    # fills a form; submitting it is one step away
+    effect: low
     description: >-
       Fill multiple form fields
     descriptions:
@@ -605,6 +637,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-handle-dialog
+    # accepting a dialog confirms whatever it asked
+    effect: low
     description: >-
       Handle the next JavaScript dialog (alert/confirm/prompt): accept or dismiss
       it.
@@ -641,6 +675,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-evaluate
+    # runs JavaScript in the page: blast radius set by the code
+    effect: low
     description: >-
       Evaluate JavaScript expression on page or element
     descriptions:
@@ -684,6 +720,8 @@ tools:
     requires: [browser.script]
 
   - name: browser-run-code-unsafe
+    # runs arbitrary code by definition
+    effect: low
     description: >-
       Run a Playwright code snippet. Unsafe: executes arbitrary JavaScript in the
       Playwright server process and is RCE-equivalent. Use it for anything the
@@ -716,6 +754,8 @@ tools:
     requires: [browser.script]
 
   - name: browser-console-messages
+    # reads the console
+    effect: low
     description: >-
       Returns all console messages
     descriptions:
@@ -752,6 +792,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-network-requests
+    # reads network activity
+    effect: low
     description: >-
       Returns a numbered list of network requests since loading the page.
     descriptions:
@@ -787,6 +829,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-network-request
+    # reads one request
+    effect: low
     description: >-
       Returns full details (headers) of a single network request. Use the number
       from browser-network-requests.
@@ -819,6 +863,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-take-screenshot
+    # captures the page
+    effect: low
     description: >-
       Take a screenshot of the current page. The image is stored and returned as a
       file:<code> reference (like image generation); use browser-snapshot for
@@ -872,6 +918,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-pdf-save
+    # renders a PDF of the page
+    effect: low
     description: >-
       Save the page as a PDF (headless Chromium only). The PDF is stored and
       returned as a file:<code> reference.
@@ -915,6 +963,8 @@ tools:
     requires: [browser.read]
 
   - name: browser-file-upload
+    # uploads a local file to a remote site
+    effect: low
     description: >-
       Upload one or more stored files (referenced as file:<code>) to the page file
       chooser / first file input.
@@ -946,6 +996,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-drop
+    # drops data onto the page
+    effect: low
     description: >-
       Drop MIME-typed data (or stored files referenced as file:<code>) onto an
       element. Provide data (mime -> string) and/or codes.
@@ -999,6 +1051,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-storage-state
+    # reads cookies and storage
+    effect: low
     description: >-
       Export the context storage state (cookies + localStorage) as a file:<code>
       JSON reference.
@@ -1021,6 +1075,8 @@ tools:
     requires: [browser.drive]
 
   - name: browser-set-storage-state
+    # writes session state the remote site will trust
+    effect: low
     description: >-
       Restore context storage state from a stored JSON file (file:<code>) produced
       by browser-storage-state. Adds the cookies and localStorage.
@@ -1084,8 +1140,9 @@ permissions:
     label: Interact with a browser context (click, type, upload)
     descriptions:
       zh: 操作浏览器上下文（点击、输入、上传）
-    # write, not destructive: it changes the page but does not run arbitrary code. Ordered
-    # above browser.read, which it implies.
+    # write, not destructive: the tools it gates are declared `low`, and a grant that looks scarier than
+    # what it unlocks is as wrong as one that looks safer. What a click does is decided by the page, and
+    # that is why the tools ask for this grant at all — the grant is the boundary, not the label.
     risk: write
     params:
       - name: context
@@ -1114,6 +1171,8 @@ permissions:
 
 config:
   - name: selenium-url
+    # reads the Selenium endpoint configuration
+    effect: low
     type: string
     scope: global
     default: ''
