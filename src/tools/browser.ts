@@ -16,9 +16,7 @@ export const newContextLogs = newContextLogsImpl
 export const wirePageLogging = wirePageLoggingImpl
 
 /** Strip the context_id (consumed by the router) from the args. */
-export function argsWithoutContext(
-  args: Record<string, unknown>,
-): Record<string, unknown> {
+export function argsWithoutContext(args: Record<string, unknown>): Record<string, unknown> {
   const { context_id: _ignored, ...rest } = args
   return rest
 }

@@ -77,9 +77,7 @@ export class SeleniumBrowserFactory {
       )
     }
     if (!res.ok) {
-      throw new Error(
-        `selenium create session failed: ${res.status} ${await res.text()}`,
-      )
+      throw new Error(`selenium create session failed: ${res.status} ${await res.text()}`)
     }
     const body = (await res.json()) as {
       value?: {
@@ -110,9 +108,7 @@ export class SeleniumBrowserFactory {
     let context = contexts[0]
     if (context === undefined) {
       context = await browser.newContext({
-        ...(this.opts.viewport !== null
-          ? { viewport: this.opts.viewport }
-          : {}),
+        ...(this.opts.viewport !== null ? { viewport: this.opts.viewport } : {}),
         ignoreHTTPSErrors: this.opts.ignoreHttpsErrors,
       })
     }

@@ -27,7 +27,7 @@ function intEnv(name: string, def: number): number {
 }
 
 function viewportEnv(): { width: number; height: number } | null {
-  const raw = process.env['PLAYWRIGHT_VIEWPORT']
+  const raw = process.env.PLAYWRIGHT_VIEWPORT
   if (raw === undefined || raw.trim() === '') return null
   const m = /^(\d+)x(\d+)$/.exec(raw.trim())
   if (m === null) return null
@@ -35,8 +35,8 @@ function viewportEnv(): { width: number; height: number } | null {
 }
 
 async function main(): Promise<void> {
-  const seleniumUrl = process.env['PLAYWRIGHT_SELENIUM_URL'] ?? ''
-  const cdpEndpoint = process.env['PLAYWRIGHT_CDP_ENDPOINT'] ?? ''
+  const seleniumUrl = process.env.PLAYWRIGHT_SELENIUM_URL ?? ''
+  const cdpEndpoint = process.env.PLAYWRIGHT_CDP_ENDPOINT ?? ''
   if (seleniumUrl === '' && cdpEndpoint === '') {
     throw new Error(
       'one of PLAYWRIGHT_SELENIUM_URL (Selenium/standalone-chrome base URL) or PLAYWRIGHT_CDP_ENDPOINT (raw CDP endpoint) is required',
@@ -44,8 +44,8 @@ async function main(): Promise<void> {
   }
 
   const viewport = viewportEnv()
-  const ignoreHttpsErrors = process.env['PLAYWRIGHT_IGNORE_HTTPS_ERRORS'] !== 'false'
-  const browserName = process.env['PLAYWRIGHT_BROWSER'] ?? 'chrome'
+  const ignoreHttpsErrors = process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS !== 'false'
+  const browserName = process.env.PLAYWRIGHT_BROWSER ?? 'chrome'
   const cdpTimeoutMs = intEnv('PLAYWRIGHT_CDP_TIMEOUT_MS', 30_000)
 
   // ONE FACTORY, CHOSEN ONCE. A context created against Selenium must be closed against the same
@@ -85,7 +85,10 @@ async function main(): Promise<void> {
         await s.releaseDriver()
         await s.browser.close().catch(() => {})
       } else {
-        await s.page.context().close().catch(() => {})
+        await s.page
+          .context()
+          .close()
+          .catch(() => {})
       }
     },
     onError: () => {},
@@ -101,12 +104,14 @@ async function main(): Promise<void> {
    * which exposes a single internal endpoint for exactly this — not the agent's public API, because
    * the sidecar has no tenant credential and must not be given one.
    */
-  const shellURL = process.env['SHELL_URL'] ?? ''
+  const shellURL = process.env.SHELL_URL ?? ''
   const fetchFile =
     shellURL === ''
       ? undefined
       : async (code: string, tenant: string) => {
-          const res = await fetch(`${shellURL}/file?code=${encodeURIComponent(code)}&tenant=${encodeURIComponent(tenant)}`)
+          const res = await fetch(
+            `${shellURL}/file?code=${encodeURIComponent(code)}&tenant=${encodeURIComponent(tenant)}`,
+          )
           if (!res.ok) throw new Error(`file ${code}: HTTP ${res.status}`)
           const body = (await res.json()) as { bytes: string; name: string; mime: string }
           return { data: Buffer.from(body.bytes, 'base64'), name: body.name, mime: body.mime }
@@ -120,10 +125,13 @@ async function main(): Promise<void> {
    * `/ext/playwright/api/*` here. A second listener would duplicate that upstream for nothing — and
    * everything here binds loopback anyway, so it would be no safer.
    */
-  const agentURL = process.env['AGENT_URL'] ?? ''
+  const agentURL = process.env.AGENT_URL ?? ''
   const panel = connectNodeAdapter({
     routes: router =>
-      router.service(UiService, uiService({ contexts: manager, identity: agentIdentity({ agentURL }) })),
+      router.service(
+        UiService,
+        uiService({ contexts: manager, identity: agentIdentity({ agentURL }) }),
+      ),
   })
 
   /** Hand the panel's paths to Connect; return true when this took the request. */
@@ -135,7 +143,9 @@ async function main(): Promise<void> {
       // with the reason is the version a reader can act on.
       res.statusCode = 503
       res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }))
+      res.end(
+        JSON.stringify({ error: 'AGENT_URL is not configured, so callers cannot be identified' }),
+      )
       return true
     }
     // Connect mounts procedures at their absolute path, so the panel's prefix is stripped here rather

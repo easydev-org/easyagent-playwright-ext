@@ -41,11 +41,13 @@ function fakeManager(overrides: Partial<ContextManager> = {}): ContextManager {
 }
 
 /** Start a sidecar on an ephemeral port and return its base URL. */
-async function serve(manager: ContextManager): Promise<{ base: string; close: () => Promise<void> }> {
+async function serve(
+  manager: ContextManager,
+): Promise<{ base: string; close: () => Promise<void> }> {
   // Port 0 would be ideal, but startSidecar reads SIDECAR_PORT; a random high port keeps tests
   // parallel-safe without changing the production code path to accept a port argument.
   const port = 19000 + Math.floor(Math.random() * 2000)
-  process.env['SIDECAR_PORT'] = String(port)
+  process.env.SIDECAR_PORT = String(port)
   const s = startSidecar({ manager, defaultTimeoutMs: 5000 })
   // The listen callback is async; poll healthz rather than sleeping a fixed time.
   const base = `http://127.0.0.1:${port}`
@@ -76,10 +78,10 @@ describe('sidecar /exec', () => {
     const { base, close } = await serve(m)
     try {
       const out = await exec(base, { tool: 'browser-create-context', tenant: 't1', session: 's1' })
-      expect(out['ok']).toBe(true)
+      expect(out.ok).toBe(true)
       // THE ID MUST COME BACK: Go has nothing else to address the context with, and a create that
       // returns only text would make every following call fail with "context_id is required".
-      expect(String(out['context_id'])).toMatch(/^ctx-/)
+      expect(String(out.context_id)).toMatch(/^ctx-/)
       expect(m.create).toHaveBeenCalledWith('t1', 's1')
     } finally {
       await close()
@@ -89,11 +91,16 @@ describe('sidecar /exec', () => {
   it('requires context_id for every tool except create', async () => {
     const { base, close } = await serve(fakeManager())
     try {
-      const out = await exec(base, { tool: 'browser-navigate', tenant: 't1', session: 's1', args: {} })
-      expect(out['ok']).toBe(false)
+      const out = await exec(base, {
+        tool: 'browser-navigate',
+        tenant: 't1',
+        session: 's1',
+        args: {},
+      })
+      expect(out.ok).toBe(false)
       // INVALID_ARGUMENT, not internal: the caller forgot something, and Go turns this into a
       // result the model can fix rather than a failure it should report.
-      expect(out['code']).toBe('invalid_argument')
+      expect(out.code).toBe('invalid_argument')
     } finally {
       await close()
     }
@@ -109,10 +116,10 @@ describe('sidecar /exec', () => {
         session: 's1',
         args: { url: 'https://example.com' },
       })
-      expect(out['ok']).toBe(false)
+      expect(out.ok).toBe(false)
       // A REAPED CONTEXT IS ACTIONABLE ("create another"); a broken browser is not. Collapsing the
       // two would make a model retry something that can never work.
-      expect(out['code']).toBe('not_found')
+      expect(out.code).toBe('not_found')
     } finally {
       await close()
     }
@@ -121,9 +128,14 @@ describe('sidecar /exec', () => {
   it('rejects an unknown tool', async () => {
     const { base, close } = await serve(fakeManager())
     try {
-      const out = await exec(base, { tool: 'browser-does-not-exist', context_id: 'c', tenant: 't', session: 's' })
-      expect(out['ok']).toBe(false)
-      expect(out['code']).toBe('not_found')
+      const out = await exec(base, {
+        tool: 'browser-does-not-exist',
+        context_id: 'c',
+        tenant: 't',
+        session: 's',
+      })
+      expect(out.ok).toBe(false)
+      expect(out.code).toBe('not_found')
     } finally {
       await close()
     }
@@ -143,10 +155,19 @@ describe('sidecar /exec', () => {
     const m = fakeManager()
     const { base, close } = await serve(m)
     try {
-      const created = await exec(base, { tool: 'browser-create-context', tenant: 't1', session: 's1' })
-      const id = String(created['context_id'])
-      const out = await exec(base, { tool: 'browser-close-context', context_id: id, tenant: 't1', session: 's1' })
-      expect(out['ok']).toBe(true)
+      const created = await exec(base, {
+        tool: 'browser-create-context',
+        tenant: 't1',
+        session: 's1',
+      })
+      const id = String(created.context_id)
+      const out = await exec(base, {
+        tool: 'browser-close-context',
+        context_id: id,
+        tenant: 't1',
+        session: 's1',
+      })
+      expect(out.ok).toBe(true)
       expect(m.close).toHaveBeenCalledWith(id, 't1', 's1')
     } finally {
       await close()

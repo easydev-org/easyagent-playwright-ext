@@ -16,12 +16,12 @@ services:
     image: nats:2.10-alpine
     container_name: ci-nats
     ports:
-      - "4222:4222"
-    command: ["-js", "-m", "8222"]
+      - '4222:4222'
+    command: ['-js', '-m', '8222']
     healthcheck:
       # Wait for the broker to ANSWER, not merely to have started: a container that is "running"
       # but not yet listening turns a startup race into a flaky test.
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8222/healthz || exit 1"]
+      test: ['CMD-SHELL', 'wget -q -O- http://127.0.0.1:8222/healthz || exit 1']
       interval: 2s
       timeout: 3s
       retries: 30
@@ -36,14 +36,14 @@ services:
     # process), not inside the compose network, so it reaches the browser on the host port. Using
     # `expose` would work only if the extension were a compose service.
     ports:
-      - "4444:4444"
+      - '4444:4444'
     shm_size: 2gb
     environment:
-      SE_START_XVFB: "true"
-      SE_NODE_MAX_SESSIONS: "4"
+      SE_START_XVFB: 'true'
+      SE_NODE_MAX_SESSIONS: '4'
       # The extension sends no auth; leaving this off avoids a wrapper that rejects unauthenticated
       # WebDriver requests.
-      SE_NODE_GRID_URL: ""
+      SE_NODE_GRID_URL: ''
     healthcheck:
       # /wd/hub/status answers ""ready":true" once the node can accept a session. Checking the
       # PORT instead would pass while the browser is still starting, and the first

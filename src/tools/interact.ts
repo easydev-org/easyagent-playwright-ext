@@ -18,13 +18,8 @@ export function interactionTools(): Record<string, Exec> {
     const target = requireArg(args, 'target')
     const loc = resolveLocator(session.page, target)
     const dbl = boolArg(args, 'doubleClick') ?? false
-    const button = (strArg(args, 'button') || 'left') as
-      | 'left'
-      | 'right'
-      | 'middle'
-    const modifiers = strArray(args, 'modifiers') as Array<
-      'Alt' | 'Control' | 'Meta' | 'Shift'
-    >
+    const button = (strArg(args, 'button') || 'left') as 'left' | 'right' | 'middle'
+    const modifiers = strArray(args, 'modifiers') as Array<'Alt' | 'Control' | 'Meta' | 'Shift'>
     await loc.click({
       ...(dbl ? { clickCount: 2 } : {}),
       button,
@@ -89,12 +84,12 @@ export function interactionTools(): Record<string, Exec> {
   }
 
   const fillForm: Exec = async (ctx, session, args) => {
-    const fields = Array.isArray(args['fields']) ? args['fields'] : []
+    const fields = Array.isArray(args.fields) ? args.fields : []
     const done: string[] = []
     for (const f of fields as Array<Record<string, unknown>>) {
-      const target = String(f['target'] ?? '')
-      const value = String(f['value'] ?? '')
-      const kind = String(f['type'] ?? 'textbox')
+      const target = String(f.target ?? '')
+      const value = String(f.value ?? '')
+      const kind = String(f.type ?? 'textbox')
       const loc = resolveLocator(session.page, target)
       if (kind === 'checkbox' || kind === 'radio') {
         if (value === 'true') await loc.check()
@@ -104,7 +99,7 @@ export function interactionTools(): Record<string, Exec> {
       } else {
         await loc.fill(value)
       }
-      done.push(`${String(f['name'] ?? target)}=${value}`)
+      done.push(`${String(f.name ?? target)}=${value}`)
     }
     return {
       content: tr(ctx.locale ?? 'en', 'filled', { fields: done.join(', ') }),
@@ -115,9 +110,7 @@ export function interactionTools(): Record<string, Exec> {
     const accept = boolArg(args, 'accept') ?? true
     const promptText = strArg(args, 'promptText')
     session.page.once('dialog', d => {
-      const action = accept
-        ? d.accept(promptText !== '' ? promptText : undefined)
-        : d.dismiss()
+      const action = accept ? d.accept(promptText !== '' ? promptText : undefined) : d.dismiss()
       void action.catch(() => {})
     })
     return {
@@ -185,8 +178,9 @@ export function interactionTools(): Record<string, Exec> {
    */
   const runCodeUnsafe: Exec = async (ctx, session, args) => {
     const code = requireArg(args, 'code')
-    const AsyncFunction = Object.getPrototypeOf(async () => {})
-      .constructor as new (...a: string[]) => (page: Page) => Promise<unknown>
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+      ...a: string[]
+    ) => (page: Page) => Promise<unknown>
     const fn = new AsyncFunction('page', `return (${code})(page)`)
     // Bounded: without a limit, a `while(true)` in the caller's code holds a tool call open forever
     // and the SDK has nothing to answer with. The bound is the extension's configured action timeout

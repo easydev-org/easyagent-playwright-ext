@@ -5,11 +5,11 @@ name: release
 # publish is worse than no image at all.
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: "tag to build (e.g. v0.1.0)"
+        description: 'tag to build (e.g. v0.1.0)'
         required: true
 
 permissions:

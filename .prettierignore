@@ -1,0 +1,15 @@
+# Files prettier must not touch.
+#
+# src/gen IS GENERATED. `buf generate` rewrites it from the .proto on every proto change, so formatting it here
+# would be undone by the next generation — and editing it by hand is worse, because the next generation silently
+# discards the edit. It is checked in so the build does not need `buf`, and it is left exactly as the generator wrote
+# it.
+src/gen
+
+# dist IS OUTPUT. Formatting a build artifact changes nothing a reader sees and rewrites thousands of lines.
+dist
+
+node_modules
+
+# The lockfile is npm's to write; reformatting it only creates a conflict with `npm install`.
+package-lock.json

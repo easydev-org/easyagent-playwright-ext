@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["22", "24", "26"]
+        node: ['22', '24', '26']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,7 +59,21 @@ jobs:
       # over CDP, so downloading Chromium in CI would be pure cost.
       - run: npm install --no-audit --no-fund
         env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      # FORMAT: PRETTIER, AND ONLY PRETTIER.
+      #
+      # THIS REPOSITORY HAD NO FORMAT GATE AT ALL — biome could rewrite files, but nothing verified they had been.
+      # A style that is never checked drifts, and the drift lands in unrelated pull requests as noise.
+      #
+      # Prettier is the formatter every other frontend in this org now uses, so one configuration produces one style
+      # across all of them. Biome's formatter is disabled in biome.json, which means it cannot disagree.
+      - run: npm run format:check
+
+      # LINT IS A SEPARATE QUESTION FROM FORMAT, and it stays biome's: "is this code wrong" — an unused constant,
+      # an implicit any — rather than "does this code look like the rest". It found two dead constants in
+      # src/sidecar.ts (`FILE_TOOLS`, `ROUTED_TOOLS`) that no code read.
+      - run: npm run lint
 
       - run: npx tsc --noEmit
       - run: npm run build
@@ -80,12 +94,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
           cache: npm
 
       - run: npm install --no-audit --no-fund
         env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       # `--wait` waits for every healthcheck, which is what makes the next step meaningful: the
       # browser node answers "ready":true only once it can accept a session, so a fast start cannot

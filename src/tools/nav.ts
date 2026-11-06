@@ -56,10 +56,7 @@ export function navigationTools(): Record<string, Exec> {
     }
     const hits = snap.split('\n').filter(matcher)
     return {
-      content:
-        hits.length === 0
-          ? tr(ctx.locale ?? 'en', 'noMatches')
-          : hits.join('\n'),
+      content: hits.length === 0 ? tr(ctx.locale ?? 'en', 'noMatches') : hits.join('\n'),
     }
   }
 
@@ -72,10 +69,7 @@ export function navigationTools(): Record<string, Exec> {
       await session.page.getByText(text).first().waitFor({ state: 'visible' })
     }
     if (textGone !== '') {
-      await session.page
-        .getByText(textGone)
-        .first()
-        .waitFor({ state: 'hidden' })
+      await session.page.getByText(textGone).first().waitFor({ state: 'hidden' })
     }
     return { content: tr(ctx.locale ?? 'en', 'waitCompleted') }
   }
@@ -96,9 +90,7 @@ export function navigationTools(): Record<string, Exec> {
     switch (action) {
       case 'list':
         return {
-          content: render(
-            pages.map((p, i) => ({ index: i, url: p.url(), title: '' })),
-          ),
+          content: render(pages.map((p, i) => ({ index: i, url: p.url(), title: '' }))),
         }
       case 'new': {
         const p = await context.newPage()
@@ -114,15 +106,11 @@ export function navigationTools(): Record<string, Exec> {
       case 'select': {
         const idx = numArg(args, 'index')
         if (idx === undefined || idx < 0 || idx >= pages.length) {
-          throw new Error(
-            tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: String(idx) }),
-          )
+          throw new Error(tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: String(idx) }))
         }
         const p = pages[idx]
         if (p === undefined)
-          throw new Error(
-            tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: idx }),
-          )
+          throw new Error(tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: idx }))
         await p.bringToFront()
         session.page = p
         return {
@@ -133,9 +121,7 @@ export function navigationTools(): Record<string, Exec> {
         const idx = numArg(args, 'index')
         const p = idx === undefined ? session.page : pages[idx]
         if (p === undefined)
-          throw new Error(
-            tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: String(idx) }),
-          )
+          throw new Error(tr(ctx.locale ?? 'en', 'invalidTabIndex', { index: String(idx) }))
         await p.close()
         const first = context.pages()[0]
         if (first !== undefined) session.page = first

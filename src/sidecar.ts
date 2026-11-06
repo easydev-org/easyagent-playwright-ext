@@ -25,7 +25,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { BrowserSession } from './context-manager.js'
 import type { ContextManager } from './context-manager.js'
-import { newContextLogs, pwTools, wirePageLogging, type Exec, type ToolCtx } from './tools/browser.js'
+import {
+  newContextLogs,
+  pwTools,
+  wirePageLogging,
+  type Exec,
+  type ToolCtx,
+} from './tools/browser.js'
 import type { PlaywrightDeps } from './deps.js'
 
 /** Longest request body accepted, in bytes. Tool arguments are JSON and small; a megabyte is room. */
@@ -83,7 +89,10 @@ export interface SidecarOptions {
    * When empty, tools that READ a file:<code> report that the file cannot be fetched rather than
    * failing obscurely.
    */
-  fetchFile?: (code: string, tenant: string) => Promise<{ data: Uint8Array; name: string; mime: string }>
+  fetchFile?: (
+    code: string,
+    tenant: string,
+  ) => Promise<{ data: Uint8Array; name: string; mime: string }>
   /**
    * Extra routes served on the SAME port, before /exec.
    *
@@ -134,31 +143,8 @@ function sidecarDeps(
   }
 }
 
-/**
- * Tools whose result is BYTES rather than text.
- *
- * A SET, NOT A CONVENTION: the handlers below call `deps.ingestFile` themselves and hand back a
- * `data.files` list, so the bytes never appear in the result — they are captured by the deps
- * implementation and collected after the call. Naming the tools here is what lets this process return
- * the bytes instead of a `file:<code>` it cannot mint.
- */
-const FILE_TOOLS = new Set([
-  'browser-take-screenshot',
-  'browser-pdf-save',
-  'browser-storage-state',
-])
-
-/**
- * Handlers that create or destroy a context, and therefore cannot run INSIDE one.
- *
- * They are routed before `withContext` is reached: create has no context yet, and close must not take
- * the per-context lock it is about to tear down.
- */
-const ROUTED_TOOLS = new Set(['browser-create-context', 'browser-close-context'])
-
 export function startSidecar(opts: SidecarOptions): { close: () => Promise<void> } {
   const tools = pwTools()
-
 
   const run = async (req: ExecRequest): Promise<ExecResponse> => {
     const tool = req.tool
@@ -175,7 +161,7 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
     // reported as one: "not found" from here is distinguishable from "the browser is broken".
     const contextId = req.context_id ?? ''
     if (contextId === '') {
-      return { ok: false, code: 'invalid_argument', error: 'context_id is required for ' + tool }
+      return { ok: false, code: 'invalid_argument', error: `context_id is required for ${tool}` }
     }
 
     if (tool === 'browser-close-context') {
@@ -217,8 +203,8 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
       // A TOOL THAT PRODUCED BYTES RETURNS THEM INSTEAD OF ITS `data`. The `data.files` list names
       // codes this process cannot mint — Go mints them — so forwarding it would tell the model about
       // a file that does not exist.
-      if (collected.length > 0) {
-        const first = collected[0]!
+      const first = collected[0]
+      if (first !== undefined) {
         result.file = {
           name: first.name,
           bytes: Buffer.from(first.data).toString('base64'),
@@ -255,7 +241,7 @@ export function startSidecar(opts: SidecarOptions): { close: () => Promise<void>
   // LOOPBACK ONLY. This endpoint has no authentication — it drives a browser and is reachable from the
   // sibling container. A Service that published it would be a remote browser anyone on the cluster
   // could use, so the bind is the boundary rather than a policy that could be forgotten.
-  const port = Number.parseInt(process.env['SIDECAR_PORT'] ?? '9222', 10)
+  const port = Number.parseInt(process.env.SIDECAR_PORT ?? '9222', 10)
   server.listen(port, '127.0.0.1', () => {
     console.log(`[playwright] sidecar on 127.0.0.1:${port} (no protocol, no NATS)`)
   })
@@ -291,7 +277,10 @@ async function handle(
 ): Promise<void> {
   const reply = (status: number, body: unknown): void => {
     const text = JSON.stringify(body)
-    res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) })
+    res.writeHead(status, {
+      'content-type': 'application/json',
+      'content-length': Buffer.byteLength(text),
+    })
     res.end(text)
   }
 

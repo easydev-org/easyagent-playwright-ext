@@ -1,9 +1,6 @@
 import type { Browser, BrowserContext, Page } from 'playwright-core'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  ContextManager,
-  type ContextManagerOpts,
-} from '../src/context-manager.js'
+import { ContextManager, type ContextManagerOpts } from '../src/context-manager.js'
 
 /** A fake browser session factory counting creates/destroys. */
 function fakeFactory() {
@@ -47,9 +44,7 @@ describe('ContextManager', () => {
     // A different tenant/session cannot use the key.
     expect(() => m.get(id, 'tenant-b', 'sess-1')).toThrow(/does not belong/)
     expect(() => m.get(id, 'tenant-a', 'sess-2')).toThrow(/does not belong/)
-    expect(() => m.get('nope', 'tenant-a', 'sess-1')).toThrow(
-      /unknown context_id/,
-    )
+    expect(() => m.get('nope', 'tenant-a', 'sess-1')).toThrow(/unknown context_id/)
     await m.stop()
   })
 

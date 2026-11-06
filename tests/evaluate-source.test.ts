@@ -36,10 +36,10 @@ describe('browser-evaluate', () => {
   it('sends a CALLING wrapper as source, not a constructed function', async () => {
     const seen: string[] = []
     const tools = interactionTools()
-    await tools['browser-evaluate']!(ctx, fakeSession(seen), { function: '() => 1+1' })
+    await tools['browser-evaluate'](ctx, fakeSession(seen), { function: '() => 1+1' })
 
     expect(seen).toHaveLength(1)
-    const src = seen[0]!
+    const src = seen[0]
     expect(typeof src).toBe('string')
     // The wrapper must INVOKE the caller's function. Playwright treats a string as an expression and
     // returns its value WITHOUT calling it, so `(() => 1+1)` alone serialises to nothing — which is
@@ -51,7 +51,7 @@ describe('browser-evaluate', () => {
   it('passes the element when a target is given', async () => {
     const seen: string[] = []
     const tools = interactionTools()
-    await tools['browser-evaluate']!(ctx, fakeSession(seen), {
+    await tools['browser-evaluate'](ctx, fakeSession(seen), {
       function: '(el) => el.textContent',
       target: '#x',
     })
@@ -66,9 +66,9 @@ describe('browser-evaluate', () => {
   // into nothing.
   it('throws on a missing function instead of hanging', async () => {
     const tools = interactionTools()
-    await expect(
-      tools['browser-evaluate']!(ctx, fakeSession([]), {}),
-    ).rejects.toThrow(/function is required/)
+    await expect(tools['browser-evaluate'](ctx, fakeSession([]), {})).rejects.toThrow(
+      /function is required/,
+    )
   })
 })
 
@@ -84,4 +84,3 @@ describe('withTimeout', () => {
     await expect(withTimeout(Promise.resolve('ok'), 1000, 'op')).resolves.toBe('ok')
   })
 })
-

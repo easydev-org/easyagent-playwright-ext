@@ -57,11 +57,7 @@ function interpolate(text: string, params: Record<string, string | number> | und
   return out
 }
 
-type Translate = (
-  locale: string,
-  key: string,
-  params?: Record<string, string | number>,
-) => string
+type Translate = (locale: string, key: string, params?: Record<string, string | number>) => string
 
 function defineI18n(catalog: Catalog): { t: Translate } {
   return { t: (locale, key, params) => translate(catalog, key, locale, params, BASE_LOCALE) }
@@ -184,8 +180,6 @@ export async function localeOf(
   session: string,
 ): Promise<string> {
   if (session === '') return BASE_LOCALE
-  const v = await deps
-    .getSessionVariable(tenant, 'agent', session, 'locale')
-    .catch(() => '')
+  const v = await deps.getSessionVariable(tenant, 'agent', session, 'locale').catch(() => '')
   return v === '' ? BASE_LOCALE : v
 }

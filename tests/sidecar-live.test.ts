@@ -15,7 +15,7 @@ import { startSidecar } from '../src/sidecar.js'
  * SKIPPED WITHOUT A BROWSER. `E2E_SELENIUM_URL` is set by CI's compose stack; a plain `npm test` on a
  * laptop has none and should not fail for it.
  */
-const seleniumUrl = process.env['E2E_SELENIUM_URL'] ?? ''
+const seleniumUrl = process.env.E2E_SELENIUM_URL ?? ''
 const hasBrowser = seleniumUrl !== ''
 
 describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
@@ -49,14 +49,17 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
           await s.releaseDriver()
           await s.browser.close().catch(() => {})
         } else {
-          await s.page.context().close().catch(() => {})
+          await s.page
+            .context()
+            .close()
+            .catch(() => {})
         }
       },
       onError: () => {},
     })
 
     const port = 19700 + Math.floor(Math.random() * 200)
-    process.env['SIDECAR_PORT'] = String(port)
+    process.env.SIDECAR_PORT = String(port)
     base = `http://127.0.0.1:${port}`
     close = startSidecar({ manager, defaultTimeoutMs: 30_000 }).close
 
@@ -88,14 +91,14 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
 
   /** The result's text, or a thrown error naming what came back instead. */
   function contentOf(out: Record<string, unknown>): string {
-    if (out['ok'] !== true) throw new Error(`call failed: ${JSON.stringify(out)}`)
-    return String((out['result'] as { content?: string } | undefined)?.content ?? '')
+    if (out.ok !== true) throw new Error(`call failed: ${JSON.stringify(out)}`)
+    return String((out.result as { content?: string } | undefined)?.content ?? '')
   }
 
   it('navigates, snapshots with refs, and clicks by ref', async () => {
     const created = await exec({ tool: 'browser-create-context' })
-    expect(created['ok']).toBe(true)
-    const ctx = String(created['context_id'])
+    expect(created.ok).toBe(true)
+    const ctx = String(created.context_id)
     expect(ctx).not.toBe('')
 
     // A DATA URL, so the test needs no network. The button is the thing every later step depends on.
@@ -125,7 +128,7 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
 
   it('returns screenshot bytes that the Go side would ingest', async () => {
     const created = await exec({ tool: 'browser-create-context' })
-    const ctx = String(created['context_id'])
+    const ctx = String(created.context_id)
     contentOf(
       await exec({
         tool: 'browser-navigate',
@@ -135,8 +138,8 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
     )
 
     const out = await exec({ tool: 'browser-take-screenshot', context_id: ctx, args: {} })
-    expect(out['ok']).toBe(true)
-    const result = out['result'] as { file?: { bytes: string; mime: string; name: string } }
+    expect(out.ok).toBe(true)
+    const result = out.result as { file?: { bytes: string; mime: string; name: string } }
     // BYTES, NOT `data`: this is the one place the seam changes shape, because the Go side turns them
     // into a `file:<code>` and it is the only side with a blob backend.
     expect(result.file).toBeDefined()
@@ -156,7 +159,7 @@ describe.skipIf(!hasBrowser)('sidecar against a real browser', () => {
       context_id: 'definitely-not-a-context',
       args: { url: 'about:blank' },
     })
-    expect(out['ok']).toBe(false)
-    expect(out['code']).toBe('not_found')
+    expect(out.ok).toBe(false)
+    expect(out.code).toBe('not_found')
   }, 60_000)
 })

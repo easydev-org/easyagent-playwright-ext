@@ -41,12 +41,7 @@ export function fileTools(): Record<string, Exec> {
       target !== ''
         ? await resolveLocator(session.page, target).screenshot(opts)
         : await session.page.screenshot({ ...opts, fullPage })
-    const file = await ingest(
-      ctx,
-      session,
-      buf,
-      `screenshot-${Date.now()}.${type}`,
-    )
+    const file = await ingest(ctx, session, buf, `screenshot-${Date.now()}.${type}`)
     return {
       content: tr(ctx.locale ?? 'en', 'screenshotSaved', {
         code: file.code,
@@ -87,8 +82,7 @@ export function fileTools(): Record<string, Exec> {
 
   const fileUpload: Exec = async (ctx, session, args) => {
     const codes = strArray(args, 'codes')
-    if (codes.length === 0)
-      throw new Error(tr(ctx.locale ?? 'en', 'codesRequired'))
+    if (codes.length === 0) throw new Error(tr(ctx.locale ?? 'en', 'codesRequired'))
     const files: Array<{ name: string; mimeType: string; buffer: Buffer }> = []
     for (const code of codes) {
       const got = await ctx.deps.getFile(code, session.tenant)
@@ -107,7 +101,7 @@ export function fileTools(): Record<string, Exec> {
 
   const drop: Exec = async (ctx, session, args) => {
     const target = requireArg(args, 'target')
-    const data = (args['data'] ?? {}) as Record<string, string>
+    const data = (args.data ?? {}) as Record<string, string>
     const codes = strArray(args, 'codes')
     const files: Array<{ name: string; mime: string; b64: string }> = []
     for (const code of codes) {
@@ -146,12 +140,7 @@ export function fileTools(): Record<string, Exec> {
   const storageState: Exec = async (ctx, session) => {
     const state = await session.context.storageState()
     const buf = Buffer.from(JSON.stringify(state))
-    const file = await ingest(
-      ctx,
-      session,
-      buf,
-      `storage-state-${Date.now()}.json`,
-    )
+    const file = await ingest(ctx, session, buf, `storage-state-${Date.now()}.json`)
     return {
       content: tr(ctx.locale ?? 'en', 'storageStateSaved', {
         code: file.code,

@@ -57,19 +57,17 @@ export function uiService(deps: UIDeps): ServiceImpl<typeof UiService> {
       const tenant = await tenantOf(ctx, deps)
       const list = deps.contexts.listForTenant(tenant)
       return {
-        contexts: list.map(
-          (c): ContextMsg => ({
-            contextId: c.contextId,
-            session: c.session,
-            url: c.url,
-            title: c.title,
-            createdAt: BigInt(c.createdAt),
-            lastUsedAt: BigInt(c.lastUsedAt),
-            busy: c.busy,
-            alive: c.alive,
-            $typeName: 'ui.v1.Context',
-          }),
-        ),
+        contexts: list.map((c): ContextMsg => ({
+          contextId: c.contextId,
+          session: c.session,
+          url: c.url,
+          title: c.title,
+          createdAt: BigInt(c.createdAt),
+          lastUsedAt: BigInt(c.lastUsedAt),
+          busy: c.busy,
+          alive: c.alive,
+          $typeName: 'ui.v1.Context',
+        })),
         count: list.length,
         $typeName: 'ui.v1.ListContextsResponse',
       }

@@ -168,10 +168,7 @@ export class ContextManager {
 
   /** Create a context and return its minted key. */
   async create(tenant: string, session: string): Promise<string> {
-    if (
-      this.opts.maxContexts > 0 &&
-      this.sessions.size >= this.opts.maxContexts
-    ) {
+    if (this.opts.maxContexts > 0 && this.sessions.size >= this.opts.maxContexts) {
       await this.evictLru()
     }
     const { browser, context, page, driverSessionId, releaseDriver } =
@@ -231,11 +228,7 @@ export class ContextManager {
   }
 
   /** Explicitly close a context (browser-close-context). */
-  async close(
-    contextId: string,
-    tenant: string,
-    session: string,
-  ): Promise<void> {
+  async close(contextId: string, tenant: string, session: string): Promise<void> {
     const s = this.get(contextId, tenant, session)
     this.sessions.delete(contextId)
     await this.destroy(s)
@@ -256,9 +249,7 @@ export class ContextManager {
   async reapIdle(): Promise<void> {
     if (this.opts.idleTimeoutMs <= 0) return
     const cutoff = Date.now() - this.opts.idleTimeoutMs
-    const doomed = [...this.sessions.values()].filter(
-      s => !s.busy && s.lastUsedAt < cutoff,
-    )
+    const doomed = [...this.sessions.values()].filter(s => !s.busy && s.lastUsedAt < cutoff)
     for (const s of doomed) this.sessions.delete(s.contextId)
     await Promise.all(doomed.map(s => this.destroy(s)))
   }

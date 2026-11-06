@@ -75,12 +75,18 @@ function opts(
 describe('SeleniumBrowserFactory.create', () => {
   it('applies the configured viewport to the driver-created page', async () => {
     const page = fakePage()
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(sessionResponse())),
+    )
 
     const f = new SeleniumBrowserFactory(
-      opts({ width: 1280, height: 720 }, {
-        connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser),
-      }),
+      opts(
+        { width: 1280, height: 720 },
+        {
+          connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser),
+        },
+      ),
     )
     await f.create()
 
@@ -91,7 +97,10 @@ describe('SeleniumBrowserFactory.create', () => {
   // A null viewport means "whatever the driver chose", so nothing must be forced.
   it('leaves the driver default alone when no viewport is configured', async () => {
     const page = fakePage()
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(sessionResponse())),
+    )
 
     const f = new SeleniumBrowserFactory(
       opts(null, { connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser) }),
@@ -104,10 +113,15 @@ describe('SeleniumBrowserFactory.create', () => {
 
   it('returns the driver session id and the page it attached to', async () => {
     const page = fakePage() as unknown as Page
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(sessionResponse())),
+    )
 
     const f = new SeleniumBrowserFactory(
-      opts(null, { connect: () => Promise.resolve(driverBrowser(page as never) as unknown as Browser) }),
+      opts(null, {
+        connect: () => Promise.resolve(driverBrowser(page as never) as unknown as Browser),
+      }),
     )
     const s = await f.create()
 
@@ -121,7 +135,10 @@ describe('SeleniumBrowserFactory.create', () => {
   // PLAYWRIGHT_IGNORE_HTTPS_ERRORS still refused any host with an untrusted certificate.
   it('turns off certificate checks over CDP when configured', async () => {
     const page = fakePage()
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(sessionResponse())),
+    )
 
     const f = new SeleniumBrowserFactory(
       opts(null, {
@@ -140,7 +157,10 @@ describe('SeleniumBrowserFactory.create', () => {
   // Off by default: silently disabling certificate checks everywhere would be worse than the bug.
   it('leaves certificate checks alone when not configured', async () => {
     const page = fakePage()
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(sessionResponse())))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(sessionResponse())),
+    )
 
     const f = new SeleniumBrowserFactory(
       opts(null, { connect: () => Promise.resolve(driverBrowser(page) as unknown as Browser) }),

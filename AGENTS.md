@@ -13,10 +13,10 @@ first; this file only records what is specific to this repo.
 
 ## The two suites
 
-| job | services | proves |
-|---|---|---|
-| `test` (matrix 22/24/26) | none | types, build, unit tests |
-| `e2e` | nats + **selenium/standalone-chrome** | a real browser navigates, and a screenshot's bytes reach the object store |
+| job                      | services                              | proves                                                                    |
+| ------------------------ | ------------------------------------- | ------------------------------------------------------------------------- |
+| `test` (matrix 22/24/26) | none                                  | types, build, unit tests                                                  |
+| `e2e`                    | nats + **selenium/standalone-chrome** | a real browser navigates, and a screenshot's bytes reach the object store |
 
 ## What the live suite needs, and why
 
@@ -24,7 +24,7 @@ first; this file only records what is specific to this repo.
 # .github/ci/compose.yaml
 chrome:
   image: selenium/standalone-chrome:4.27
-  ports: ["4444:4444"]     # published: the extension runs on the RUNNER
+  ports: ['4444:4444'] # published: the extension runs on the RUNNER
   shm_size: 2gb
 ```
 
@@ -36,7 +36,7 @@ a bucket would test the SDK's S3 adapter, not this extension.
 
 They are **permission-gated**, so `callTool` (which sends no grants) fails with
 `permission denied: browser.read (no grant held)`. The suite uses `callToolWithGrants` with what an
-operator would issue. That method was added to the SDK *because* this suite could not otherwise call
+operator would issue. That method was added to the SDK _because_ this suite could not otherwise call
 a gated tool at all.
 
 Every browser tool also declares `required_config: [selenium-url]`, so the suite writes that into
